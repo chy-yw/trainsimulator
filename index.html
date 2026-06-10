@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>列車建模 — 3D 底板模擬</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>列車建模 · 3D 底板模擬</h1>
+        <p>拖放組件到底板上 · 可設定各項寬高 · 超出限制時無法貼上</p>
+      </div>
+      <div class="header-actions">
+        <a class="btn btn-ghost" href="admin.html">管理後台</a>
+        <button class="btn btn-primary" id="save-image" type="button">儲存圖片</button>
+        <button class="btn btn-ghost" id="clear-board" type="button">清空底板</button>
+      </div>
+    </header>
+
+    <aside class="panel panel-left">
+      <h2>選擇底板</h2>
+      <div class="field">
+        <select id="bg-select"></select>
+      </div>
+
+      <h2>底板尺寸設定</h2>
+      <div id="bg-config"></div>
+
+      <h2>組件尺寸設定</h2>
+      <div id="items-config"></div>
+
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-primary" id="apply-config" style="flex:1">套用尺寸</button>
+        <button class="btn btn-ghost" id="save-config" style="flex:1">儲存設定</button>
+      </div>
+      <p class="hint">單位為毫米 (mm)。修改後請按「套用尺寸」。</p>
+    </aside>
+
+    <main class="viewport">
+      <div class="scene">
+        <div class="board-wrapper" id="board-wrapper">
+          <div class="board" id="board">
+            <img class="board-bg" id="board-bg" src="" alt="" draggable="false">
+            <div class="board-grid"></div>
+          </div>
+        </div>
+      </div>
+      <p class="board-label" id="board-label"></p>
+    </main>
+
+    <aside class="panel panel-right">
+      <div class="panel-right-content">
+        <h2>尺寸狀態</h2>
+        <div class="status-card ok" id="status-card"></div>
+
+        <h2>已貼上組件</h2>
+        <ul class="placed-list" id="placed-list"></ul>
+
+        <p class="hint" style="margin-top:16px">
+          <strong>操作說明</strong><br>
+          從右側下方拖動組件到底板貼上。<br>
+          已貼上的組件可再次拖動調整位置。<br>
+          點選組件後按 Delete 或點 × 移除。<br>
+          組件會自動對齊網格排列，佔用寬高依實際排版動態計算。<br>
+          組件不能重疊在其他組件上。<br>
+          完成排版後按上方「儲存圖片」匯出合成圖。
+        </p>
+      </div>
+
+      <div class="palette-section">
+        <h2>組件庫（拖放到中央底板）</h2>
+        <div class="palette" id="palette"></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="js/store.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

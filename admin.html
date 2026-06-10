@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理後台 — 列車建模</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+  <div class="login-overlay" id="login-overlay">
+    <div class="login-box">
+      <h2>管理員登入</h2>
+      <p>預設密碼：<code>trainadmin</code>（可在下方設定中修改）</p>
+      <input type="password" id="login-password" placeholder="輸入管理密碼" autocomplete="current-password">
+      <button class="btn btn-primary" id="login-btn" type="button" style="width:100%">登入</button>
+    </div>
+  </div>
+
+  <div class="admin-app hidden" id="admin-app">
+    <header class="admin-header">
+      <div>
+        <h1>列車建模 · 管理後台</h1>
+        <p>上傳圖片、編輯尺寸，儲存到瀏覽器或匯出部署到 GitHub Pages</p>
+      </div>
+      <div class="admin-actions">
+        <a class="btn btn-ghost" href="index.html">返回模擬器</a>
+        <button class="btn btn-ghost" id="import-zip-btn" type="button">匯入 ZIP</button>
+        <button class="btn btn-primary" id="save-local-btn" type="button">儲存到瀏覽器</button>
+        <button class="btn btn-primary" id="export-zip-btn" type="button">匯出 ZIP（GitHub）</button>
+        <button class="btn btn-ghost" id="reset-local-btn" type="button">清除本機資料</button>
+      </div>
+    </header>
+
+    <main class="admin-main">
+      <div class="admin-notice">
+        <strong>GitHub Pages 說明：</strong>靜態網站無法在伺服器直接寫入檔案。請用「儲存到瀏覽器」在本機預覽，或「匯出 ZIP」後解壓並上傳到 GitHub 倉庫，即可讓所有人看到更新。
+      </div>
+
+      <section class="admin-section">
+        <div class="admin-section-header">
+          <h2>管理密碼</h2>
+        </div>
+        <div class="admin-card" style="grid-template-columns:1fr auto;">
+          <div class="fields">
+            <label for="new-password">新密碼（留空則不變）</label>
+            <input type="password" id="new-password" placeholder="設定新的管理密碼">
+          </div>
+          <div class="card-actions">
+            <button class="btn btn-ghost" id="change-password-btn" type="button">更新密碼</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="admin-section">
+        <div class="admin-section-header">
+          <h2>底板（Background）</h2>
+          <button class="btn btn-ghost" id="add-bg-btn" type="button">+ 新增底板</button>
+        </div>
+        <div class="admin-grid" id="bg-list"></div>
+      </section>
+
+      <section class="admin-section">
+        <div class="admin-section-header">
+          <h2>組件（Items）</h2>
+          <button class="btn btn-ghost" id="add-item-btn" type="button">+ 新增組件</button>
+        </div>
+        <div class="admin-grid" id="item-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <input type="file" id="import-zip-input" accept=".zip,application/zip" class="hidden">
+  <input type="file" id="upload-image-input" accept="image/*" class="hidden">
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

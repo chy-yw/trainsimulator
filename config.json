@@ -1,0 +1,97 @@
+{
+  "backgrounds": [
+    {
+      "id": "bg1",
+      "name": "車廂 A（車門區）",
+      "file": "background/bg-1.jpeg",
+      "width": 3200,
+      "height": 2400
+    },
+    {
+      "id": "bg2",
+      "name": "車廂 B（窗戶區）",
+      "file": "background/bg-2.jpeg",
+      "width": 3200,
+      "height": 2400
+    },
+    {
+      "id": "bg3",
+      "name": "車廂 C",
+      "file": "background/bg-3.jpeg",
+      "width": 3200,
+      "height": 2400
+    },
+    {
+      "id": "bg4",
+      "name": "車廂 D",
+      "file": "background/bg-4.jpeg",
+      "width": 3200,
+      "height": 2400
+    }
+  ],
+  "items": [
+    {
+      "id": "item1",
+      "name": "組件 1",
+      "file": "items/item-1.jpg",
+      "width": 800,
+      "height": 600
+    },
+    {
+      "id": "item2",
+      "name": "組件 2",
+      "file": "items/item-2.jpg",
+      "width": 600,
+      "height": 600
+    },
+    {
+      "id": "item3",
+      "name": "組件 3",
+      "file": "items/item-3.jpg",
+      "width": 700,
+      "height": 500
+    },
+    {
+      "id": "item4",
+      "name": "組件 4",
+      "file": "items/item-4.jpg",
+      "width": 500,
+      "height": 400
+    },
+    {
+      "id": "item5",
+      "name": "組件 5",
+      "file": "items/item-5.jpg",
+      "width": 450,
+      "height": 450
+    },
+    {
+      "id": "item6",
+      "name": "組件 6",
+      "file": "items/Picture8.jpg",
+      "width": 900,
+      "height": 350
+    },
+    {
+      "id": "item7",
+      "name": "組件 7",
+      "file": "items/Picture9.jpg",
+      "width": 500,
+      "height": 500
+    },
+    {
+      "id": "item8",
+      "name": "組件 8",
+      "file": "items/Picture10.jpg",
+      "width": 450,
+      "height": 450
+    },
+    {
+      "id": "item9",
+      "name": "組件 9",
+      "file": "items/Picture11.jpg",
+      "width": 600,
+      "height": 500
+    }
+  ]
+}
