@@ -1,0 +1,204 @@
+(function () {
+  "use strict";
+
+  const CONFIG_DOC = { collection: "trainModel", id: "config" };
+  const urlCache = new Map();
+
+  let app = null;
+  let auth = null;
+  let db = null;
+  let storage = null;
+  let initPromise = null;
+
+  function isConfigured() {
+    const cfg = window.FIREBASE_CONFIG;
+    if (!cfg?.apiKey || !cfg.projectId) return false;
+    return !String(cfg.apiKey).includes("YOUR_");
+  }
+
+  function requireFirebase() {
+    if (!isConfigured()) {
+      throw new Error("Firebase is not configured. Edit js/firebase-config.js first.");
+    }
+    if (typeof firebase === "undefined") {
+      throw new Error("Firebase SDK not loaded.");
+    }
+  }
+
+  async function init() {
+    if (!isConfigured()) return false;
+    if (initPromise) return initPromise;
+
+    initPromise = (async () => {
+      requireFirebase();
+      if (!app) {
+        app = firebase.initializeApp(window.FIREBASE_CONFIG);
+        auth = firebase.auth();
+        db = firebase.firestore();
+        storage = firebase.storage();
+      }
+      return true;
+    })();
+
+    return initPromise;
+  }
+
+  function getCurrentUser() {
+    return auth?.currentUser || null;
+  }
+
+  async function signIn(email, password) {
+    await init();
+    return auth.signInWithEmailAndPassword(email, password);
+  }
+
+  async function signOut() {
+    if (!auth) return;
+    await auth.signOut();
+  }
+
+  function onAuthStateChanged(callback) {
+    init()
+      .then((ok) => {
+        if (!ok) return;
+        auth.onAuthStateChanged(callback);
+      })
+      .catch(() => {});
+  }
+
+  async function getConfig() {
+    const ready = await init();
+    if (!ready) return null;
+
+    const snap = await db
+      .collection(CONFIG_DOC.collection)
+      .doc(CONFIG_DOC.id)
+      .get();
+
+    if (!snap.exists) return null;
+
+    const data = snap.data();
+    return {
+      version: data.version || 2,
+      backgrounds: data.backgrounds || [],
+      items: data.items || [],
+    };
+  }
+
+  async function saveConfig(config) {
+    await init();
+    if (!getCurrentUser()) {
+      throw new Error("Admin must be signed in to save to Firebase.");
+    }
+
+    await db
+      .collection(CONFIG_DOC.collection)
+      .doc(CONFIG_DOC.id)
+      .set({
+        version: 2,
+        backgrounds: config.backgrounds || [],
+        items: config.items || [],
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+  }
+
+  function storageRef(path) {
+    return storage.ref(path);
+  }
+
+  async function uploadImage(path, fileOrBlob) {
+    await init();
+    if (!getCurrentUser()) {
+      throw new Error("Admin must be signed in to upload images.");
+    }
+
+    const ref = storageRef(path);
+    await ref.put(fileOrBlob);
+    urlCache.delete(path);
+    return getImageUrl(path);
+  }
+
+  async function deleteImage(path) {
+    if (!path) return;
+    await init();
+    if (!getCurrentUser()) return;
+
+    try {
+      await storageRef(path).delete();
+    } catch {
+      /* file may not exist in storage */
+    }
+    urlCache.delete(path);
+  }
+
+  async function getImageUrl(path) {
+    if (!path) return "";
+    if (urlCache.has(path)) return urlCache.get(path);
+
+    const ready = await init();
+    if (!ready) return "";
+
+    try {
+      const url = await storageRef(path).getDownloadURL();
+      urlCache.set(path, url);
+      return url;
+    } catch {
+      return "";
+    }
+  }
+
+  async function loadImageUrlsForConfig(config) {
+    const urls = new Map();
+    const entries = [...(config.backgrounds || []), ...(config.items || [])];
+
+    await Promise.all(
+      entries.map(async (entry) => {
+        if (!entry.file) return;
+        const url = await getImageUrl(entry.file);
+        if (url) urls.set(entry.file, url);
+      })
+    );
+
+    return urls;
+  }
+
+  async function publishConfig(config, imageResolver) {
+    await init();
+    if (!getCurrentUser()) {
+      throw new Error("Admin must be signed in to publish.");
+    }
+
+    const paths = new Set();
+    [...(config.backgrounds || []), ...(config.items || [])].forEach((entry) => {
+      if (entry.file) paths.add(entry.file);
+    });
+
+    for (const path of paths) {
+      try {
+        await storageRef(path).getMetadata();
+      } catch {
+        const blob = await imageResolver(path);
+        if (blob) await storageRef(path).put(blob);
+        urlCache.delete(path);
+      }
+    }
+
+    await saveConfig(config);
+  }
+
+  window.TrainModelFirebase = {
+    isConfigured,
+    init,
+    getConfig,
+    saveConfig,
+    uploadImage,
+    deleteImage,
+    getImageUrl,
+    loadImageUrlsForConfig,
+    publishConfig,
+    signIn,
+    signOut,
+    onAuthStateChanged,
+    getCurrentUser,
+  };
+})();

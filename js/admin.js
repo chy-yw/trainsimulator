@@ -1,13 +1,10 @@
 (function () {
   "use strict";
 
-  const PASSWORD_KEY = "trainModelAdminPassword";
-  const SESSION_KEY = "trainModelAdminSession";
-  const DEFAULT_PASSWORD = "trainadmin";
-
   let config = { backgrounds: [], items: [] };
   let previewUrls = new Map();
   let pendingUpload = null;
+  let useFirebase = false;
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -19,32 +16,69 @@
     toast._t = setTimeout(() => el.classList.remove("show"), 2800);
   }
 
-  function getPassword() {
-    return localStorage.getItem(PASSWORD_KEY) || DEFAULT_PASSWORD;
+  function firebaseReady() {
+    return useFirebase && window.TrainModelFirebase?.isConfigured();
   }
 
-  function checkSession() {
-    return sessionStorage.getItem(SESSION_KEY) === "ok";
-  }
-
-  function unlockApp() {
-    sessionStorage.setItem(SESSION_KEY, "ok");
+  async function unlockApp() {
     $("#login-overlay").classList.add("hidden");
     $("#admin-app").classList.remove("hidden");
-    initAdmin();
+    await loadConfig();
+    renderAll();
+    if (!adminInitialized) {
+      bindEvents();
+      adminInitialized = true;
+    }
   }
 
-  function bindLogin() {
-    $("#login-btn").addEventListener("click", () => {
-      const input = $("#login-password").value;
-      if (input === getPassword()) unlockApp();
-      else toast("密碼錯誤", true);
+  function lockApp() {
+    $("#admin-app").classList.add("hidden");
+    $("#login-overlay").classList.remove("hidden");
+  }
+
+  async function bindLogin() {
+    useFirebase = window.TrainModelFirebase?.isConfigured() || false;
+
+    if (!useFirebase) {
+      $("#login-hint").textContent =
+        "Firebase 尚未設定。請編輯 js/firebase-config.js 後重新整理此頁。";
+      $("#login-btn").disabled = true;
+      return;
+    }
+
+    $("#login-btn").disabled = false;
+    $("#firebase-setup-hint").classList.add("hidden");
+
+    $("#login-btn").addEventListener("click", async () => {
+      const email = $("#login-email").value.trim();
+      const password = $("#login-password").value;
+      if (!email || !password) {
+        toast("請輸入 Email 與密碼", true);
+        return;
+      }
+
+      try {
+        await TrainModelFirebase.signIn(email, password);
+        toast("登入成功");
+      } catch (err) {
+        toast(err.message || "登入失敗", true);
+      }
     });
+
     $("#login-password").addEventListener("keydown", (e) => {
       if (e.key === "Enter") $("#login-btn").click();
     });
 
-    if (checkSession()) unlockApp();
+    $("#logout-btn").addEventListener("click", async () => {
+      await TrainModelFirebase.signOut();
+      lockApp();
+      toast("已登出");
+    });
+
+    TrainModelFirebase.onAuthStateChanged((user) => {
+      if (user) unlockApp();
+      else lockApp();
+    });
   }
 
   async function loadBaseConfig() {
@@ -58,6 +92,19 @@
   }
 
   async function loadConfig() {
+    if (firebaseReady()) {
+      try {
+        const cloud = await TrainModelFirebase.getConfig();
+        if (cloud?.backgrounds?.length || cloud?.items?.length) {
+          config = cloud;
+          await refreshPreviewUrls();
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+
     const local = await TrainModelStore.getConfig();
     if (local?.backgrounds?.length || local?.items?.length) {
       config = local;
@@ -67,9 +114,34 @@
     await refreshPreviewUrls();
   }
 
+  async function resolveImageBlob(path) {
+    const localBlob = await TrainModelStore.getImageBlob(path);
+    if (localBlob) return localBlob;
+
+    try {
+      const res = await fetch(previewSrc(path));
+      if (res.ok) return res.blob();
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
   async function refreshPreviewUrls() {
-    previewUrls.forEach((url) => URL.revokeObjectURL(url));
-    previewUrls = await TrainModelStore.loadImageUrlsForConfig(config);
+    previewUrls.forEach((url) => {
+      if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+    });
+    previewUrls = new Map();
+
+    if (firebaseReady()) {
+      const cloudUrls = await TrainModelFirebase.loadImageUrlsForConfig(config);
+      cloudUrls.forEach((url, path) => previewUrls.set(path, url));
+    }
+
+    const localUrls = await TrainModelStore.loadImageUrlsForConfig(config);
+    localUrls.forEach((url, path) => {
+      if (!previewUrls.has(path)) previewUrls.set(path, url);
+    });
 
     const all = [...config.backgrounds, ...config.items];
     for (const entry of all) {
@@ -158,8 +230,11 @@
         const idx = listRef.findIndex((e) => e.id === id);
         if (idx >= 0) listRef.splice(idx, 1);
         await TrainModelStore.deleteImage(entry.file).catch(() => {});
+        if (firebaseReady() && TrainModelFirebase.getCurrentUser()) {
+          await TrainModelFirebase.deleteImage(entry.file).catch(() => {});
+        }
         renderAll();
-        toast("已刪除（請按儲存到瀏覽器）");
+        toast("已刪除（請按儲存到雲端）");
       });
     });
   }
@@ -189,17 +264,33 @@
     const folder = isBg ? "background" : "items";
     const filename = sanitizeFilename(`${entry.id}-${Date.now()}${ext}`);
     const path = `${folder}/${filename}`;
+    const oldPath = entry.file;
 
     await TrainModelStore.saveImage(path, file);
-    if (entry.file !== path) {
-      await TrainModelStore.deleteImage(entry.file).catch(() => {});
+    if (oldPath !== path) {
+      await TrainModelStore.deleteImage(oldPath).catch(() => {});
     }
     entry.file = path;
+
+    if (firebaseReady() && TrainModelFirebase.getCurrentUser()) {
+      try {
+        await TrainModelFirebase.uploadImage(path, file);
+        if (oldPath !== path) {
+          await TrainModelFirebase.deleteImage(oldPath).catch(() => {});
+        }
+      } catch (err) {
+        toast(`本機已更新，雲端上傳失敗：${err.message}`, true);
+      }
+    }
 
     pendingUpload = null;
     await refreshPreviewUrls();
     renderAll();
-    toast("圖片已更新（請按儲存到瀏覽器）");
+    toast(
+      firebaseReady() && TrainModelFirebase.getCurrentUser()
+        ? "圖片已更新（請按儲存到雲端同步設定）"
+        : "圖片已更新（請按儲存到雲端或瀏覽器）"
+    );
   }
 
   function addEntry(type) {
@@ -219,7 +310,32 @@
 
   async function saveLocal() {
     await TrainModelStore.saveConfig(config);
-    toast("已儲存到瀏覽器，返回模擬器即可看到更新");
+    toast("已儲存到瀏覽器（僅本機可見）");
+  }
+
+  async function saveCloud() {
+    if (!firebaseReady()) {
+      toast("請先設定 Firebase（js/firebase-config.js）", true);
+      return;
+    }
+    if (!TrainModelFirebase.getCurrentUser()) {
+      toast("請先登入管理員帳號", true);
+      return;
+    }
+
+    const btn = $("#save-cloud-btn");
+    btn.disabled = true;
+
+    try {
+      await TrainModelFirebase.publishConfig(config, resolveImageBlob);
+      await TrainModelStore.saveConfig(config);
+      await refreshPreviewUrls();
+      toast("已儲存到雲端，所有使用者將看到更新");
+    } catch (err) {
+      toast(err.message || "雲端儲存失敗", true);
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   async function exportZip() {
@@ -235,21 +351,13 @@
     [...config.backgrounds, ...config.items].forEach((e) => paths.add(e.file));
 
     for (const path of paths) {
-      let blob = await TrainModelStore.getImageBlob(path);
-      if (!blob) {
-        try {
-          const res = await fetch(previewSrc(path));
-          if (res.ok) blob = await res.blob();
-        } catch {
-          /* skip missing */
-        }
-      }
+      const blob = await resolveImageBlob(path);
       if (blob) zip.file(path, blob);
     }
 
     const content = await zip.generateAsync({ type: "blob" });
     downloadBlob(content, `列車建模-export-${Date.now()}.zip`);
-    toast("ZIP 已下載，解壓後上傳到 GitHub 倉庫根目錄");
+    toast("ZIP 已下載");
   }
 
   async function importZip(file) {
@@ -281,7 +389,7 @@
     await TrainModelStore.saveConfig(config);
     await refreshPreviewUrls();
     renderAll();
-    toast("匯入成功");
+    toast("匯入成功（請按儲存到雲端發布）");
   }
 
   function downloadBlob(blob, filename) {
@@ -294,9 +402,19 @@
   }
 
   async function resetLocal() {
-    if (!confirm("清除本機管理資料？模擬器將恢復使用 config.json 預設內容。")) return;
+    if (!confirm("清除本機管理資料？不會刪除 Firebase 雲端資料。")) return;
     await TrainModelStore.clearAll();
     config = await loadBaseConfig();
+    if (firebaseReady()) {
+      try {
+        const cloud = await TrainModelFirebase.getConfig();
+        if (cloud?.backgrounds?.length || cloud?.items?.length) {
+          config = cloud;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
     await refreshPreviewUrls();
     renderAll();
     toast("本機資料已清除");
@@ -305,6 +423,7 @@
   function bindEvents() {
     $("#add-bg-btn").addEventListener("click", () => addEntry("background"));
     $("#add-item-btn").addEventListener("click", () => addEntry("item"));
+    $("#save-cloud-btn").addEventListener("click", () => saveCloud());
     $("#save-local-btn").addEventListener("click", () => saveLocal());
     $("#export-zip-btn").addEventListener("click", () => exportZip());
     $("#reset-local-btn").addEventListener("click", () => resetLocal());
@@ -321,24 +440,9 @@
       e.target.value = "";
       if (file) importZip(file);
     });
-
-    $("#change-password-btn").addEventListener("click", () => {
-      const val = $("#new-password").value.trim();
-      if (!val) {
-        toast("請輸入新密碼", true);
-        return;
-      }
-      localStorage.setItem(PASSWORD_KEY, val);
-      $("#new-password").value = "";
-      toast("密碼已更新");
-    });
   }
 
-  async function initAdmin() {
-    await loadConfig();
-    renderAll();
-    bindEvents();
-  }
+  let adminInitialized = false;
 
   bindLogin();
 })();

@@ -51,6 +51,21 @@
     bindPointerDrag();
   }
 
+  async function loadFirebaseConfig() {
+    if (!window.TrainModelFirebase?.isConfigured()) return false;
+    try {
+      const cloudConfig = await TrainModelFirebase.getConfig();
+      if (!cloudConfig?.backgrounds?.length && !cloudConfig?.items?.length) return false;
+
+      config = cloudConfig;
+      const urls = await TrainModelFirebase.loadImageUrlsForConfig(config);
+      urls.forEach((url, path) => adminImageUrls.set(path, url));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function loadAdminConfig() {
     if (!window.TrainModelStore) return;
     try {
@@ -66,16 +81,20 @@
   }
 
   async function loadConfig() {
-    try {
-      const res = await fetch("config.json");
-      if (res.ok) {
-        config = await res.json();
-      }
-    } catch {
-      /* file:// fallback */
-    }
+    const loadedFromFirebase = await loadFirebaseConfig();
 
-    await loadAdminConfig();
+    if (!loadedFromFirebase) {
+      try {
+        const res = await fetch("config.json");
+        if (res.ok) {
+          config = await res.json();
+        }
+      } catch {
+        /* file:// fallback */
+      }
+
+      await loadAdminConfig();
+    }
 
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
