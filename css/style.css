@@ -7,17 +7,17 @@
 }
 
 :root {
-  --bg: #0b1220;
-  --surface: #141f36;
-  --surface-2: #1d2d4f;
-  --border: #3a4f7a;
-  --text: #f2f6ff;
-  --text-muted: #9aaccf;
-  --accent: #22d3ee;
-  --accent-dim: #0891b2;
-  --accent-warm: #fb923c;
-  --accent-glow: rgba(34, 211, 238, 0.22);
-  --warm-glow: rgba(251, 146, 60, 0.14);
+  --bg: #0c1324;
+  --surface: #152038;
+  --surface-2: #1f3054;
+  --border: #3f5585;
+  --text: #f4f7ff;
+  --text-muted: #a3b5d6;
+  --accent: #2ee4c6;
+  --accent-dim: #0d9e8c;
+  --accent-warm: #ff9f5a;
+  --accent-glow: rgba(46, 228, 198, 0.2);
+  --warm-glow: rgba(255, 159, 90, 0.13);
   --success: #4ade80;
   --success-border: rgba(74, 222, 128, 0.45);
   --danger: #fb7185;
@@ -230,7 +230,7 @@ header p {
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, #67e8f9 0%, var(--accent) 100%);
+  background: linear-gradient(135deg, #6ef5dc 0%, var(--accent) 100%);
 }
 
 .btn-primary:disabled {
