@@ -5,6 +5,7 @@
   let currentBgId = null;
   let placedItems = [];
   let selectedPlacedId = null;
+  let paletteRotation = 0;
   let dragState = null;
   let scale = 1;
   let exportInProgress = false;
@@ -119,6 +120,38 @@
 
   function canUserEditDims(entry) {
     return entry?.userCanEditDims !== false;
+  }
+
+  const ROTATION_ANGLES = [0, 90, 180, 270];
+
+  function normalizeRotation(rotation) {
+    const value = Number(rotation) || 0;
+    return ROTATION_ANGLES.includes(value) ? value : 0;
+  }
+
+  function nextRotation(rotation) {
+    const rot = normalizeRotation(rotation);
+    const idx = ROTATION_ANGLES.indexOf(rot);
+    return ROTATION_ANGLES[(idx + 1) % ROTATION_ANGLES.length];
+  }
+
+  function getItemDims(itemDef, rotation = 0) {
+    const rot = normalizeRotation(rotation);
+    if (rot === 90 || rot === 270) {
+      return { width: itemDef.height, height: itemDef.width };
+    }
+    return { width: itemDef.width, height: itemDef.height };
+  }
+
+  function rotationLabel(rotation) {
+    const rot = normalizeRotation(rotation);
+    return rot === 0 ? "" : ` ${rot}°`;
+  }
+
+  function getPlacedDims(placed) {
+    const def = getItemDef(placed.itemId);
+    if (!def) return { width: 0, height: 0 };
+    return getItemDims(def, placed.rotation);
   }
 
   function buildBgSelect() {
@@ -263,8 +296,8 @@
     return placedItems
       .filter((p) => p.instanceId !== excludePlacedId)
       .map((p) => {
-        const def = getItemDef(p.itemId);
-        return { x: p.x, y: p.y, width: def.width, height: def.height };
+        const dims = getPlacedDims(p);
+        return { x: p.x, y: p.y, width: dims.width, height: dims.height };
       });
   }
 
@@ -305,17 +338,18 @@
     };
   }
 
-  function findNextGridSlot(itemDef, excludePlacedId = null) {
+  function findNextGridSlot(itemDef, excludePlacedId = null, rotation = 0) {
     const bg = getCurrentBg();
     if (!bg) return null;
 
+    const dims = getItemDims(itemDef, rotation);
     const cell = getGridCell();
-    const maxY = bg.height - itemDef.height;
-    const maxX = bg.width - itemDef.width;
+    const maxY = bg.height - dims.height;
+    const maxX = bg.width - dims.width;
 
     for (let y = 0; y <= maxY; y += cell) {
       for (let x = 0; x <= maxX; x += cell) {
-        const check = canPlaceAt(x, y, itemDef, excludePlacedId);
+        const check = canPlaceAt(x, y, itemDef, excludePlacedId, rotation);
         if (check.ok) return { x, y };
       }
     }
@@ -333,21 +367,27 @@
     return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
   }
 
-  function overlapsAnyPlaced(x, y, itemDef, excludePlacedId = null) {
-    const w = itemDef.width;
-    const h = itemDef.height;
+  function overlapsAnyPlaced(x, y, itemDef, excludePlacedId = null, rotation = 0) {
+    const dims = getItemDims(itemDef, rotation);
     return placedItems.some((placed) => {
       if (placed.instanceId === excludePlacedId) return false;
-      const other = getItemDef(placed.itemId);
-      if (!other) return false;
-      return rectanglesOverlap(x, y, w, h, placed.x, placed.y, other.width, other.height);
+      const otherDims = getPlacedDims(placed);
+      return rectanglesOverlap(
+        x,
+        y,
+        dims.width,
+        dims.height,
+        placed.x,
+        placed.y,
+        otherDims.width,
+        otherDims.height
+      );
     });
   }
 
-  function canPlaceAt(x, y, itemDef, excludePlacedId = null) {
+  function canPlaceAt(x, y, itemDef, excludePlacedId = null, rotation = 0) {
     const bg = getCurrentBg();
-    const w = itemDef.width;
-    const h = itemDef.height;
+    const { width: w, height: h } = getItemDims(itemDef, rotation);
 
     if (x < 0 || y < 0 || x + w > bg.width || y + h > bg.height) {
       return {
@@ -356,7 +396,7 @@
       };
     }
 
-    if (overlapsAnyPlaced(x, y, itemDef, excludePlacedId)) {
+    if (overlapsAnyPlaced(x, y, itemDef, excludePlacedId, rotation)) {
       return {
         ok: false,
         reason: "組件不能重疊在其他組件上",
@@ -368,22 +408,27 @@
 
   function hasNoAvailableSlot(itemDef, excludePlacedId = null) {
     if (!itemDef) return false;
-    return findNextGridSlot(itemDef, excludePlacedId) === null;
+    return ROTATION_ANGLES.every(
+      (rot) => findNextGridSlot(itemDef, excludePlacedId, rot) === null
+    );
   }
 
-  function clampPosition(x, y, itemDef) {
+  function clampPosition(x, y, itemDef, rotation = 0) {
     const bg = getCurrentBg();
-    const maxX = Math.max(0, bg.width - itemDef.width);
-    const maxY = Math.max(0, bg.height - itemDef.height);
+    const { width, height } = getItemDims(itemDef, rotation);
+    const maxX = Math.max(0, bg.width - width);
+    const maxY = Math.max(0, bg.height - height);
     return {
       x: Math.max(0, Math.min(x, maxX)),
       y: Math.max(0, Math.min(y, maxY)),
     };
   }
 
-  function placeItemAt(itemId, modelX, modelY) {
+  function placeItemAt(itemId, modelX, modelY, rotation = paletteRotation) {
     const itemDef = getItemDef(itemId);
     if (!itemDef) return false;
+    const rot = normalizeRotation(rotation);
+    const dims = getItemDims(itemDef, rot);
 
     if (hasNoAvailableSlot(itemDef)) {
       showToast("無法添加：背景上已無可放置的空位", true);
@@ -391,15 +436,16 @@
     }
 
     let pos = clampPosition(
-      modelX - itemDef.width / 2,
-      modelY - itemDef.height / 2,
-      itemDef
+      modelX - dims.width / 2,
+      modelY - dims.height / 2,
+      itemDef,
+      rot
     );
-    pos = snapToGrid(pos.x, pos.y, itemDef.width, itemDef.height);
+    pos = snapToGrid(pos.x, pos.y, dims.width, dims.height);
 
-    let check = canPlaceAt(pos.x, pos.y, itemDef);
+    let check = canPlaceAt(pos.x, pos.y, itemDef, null, rot);
     if (!check.ok) {
-      const slot = findNextGridSlot(itemDef);
+      const slot = findNextGridSlot(itemDef, null, rot);
       if (!slot) {
         showToast(check.reason, true);
         return false;
@@ -412,6 +458,7 @@
       itemId,
       x: pos.x,
       y: pos.y,
+      rotation: rot,
     });
     renderPlacedItems();
     updateStatus();
@@ -487,8 +534,18 @@
 
       for (const placed of placedItems) {
         const def = getItemDef(placed.itemId);
+        const dims = getPlacedDims(placed);
         const itemImg = await loadImage(assetUrl(def.file));
-        ctx.drawImage(itemImg, placed.x, placed.y, def.width, def.height);
+        const rot = normalizeRotation(placed.rotation);
+        if (rot !== 0) {
+          ctx.save();
+          ctx.translate(placed.x + dims.width / 2, placed.y + dims.height / 2);
+          ctx.rotate((rot * Math.PI) / 180);
+          ctx.drawImage(itemImg, -def.width / 2, -def.height / 2, def.width, def.height);
+          ctx.restore();
+        } else {
+          ctx.drawImage(itemImg, placed.x, placed.y, def.width, def.height);
+        }
       }
 
       const blob = await new Promise((resolve, reject) => {
@@ -525,7 +582,7 @@
       return;
     }
 
-    dragState = { type: "palette", itemId };
+    dragState = { type: "palette", itemId, rotation: paletteRotation };
     e.dataTransfer.setData("text/plain", itemId);
     e.dataTransfer.effectAllowed = "copy";
   }
@@ -548,11 +605,25 @@
     let check;
     if (dragState.type === "palette") {
       const itemDef = getItemDef(dragState.itemId);
-      check = canPlaceAt(modelX, modelY, itemDef);
+      const dims = getItemDims(itemDef, dragState.rotation);
+      check = canPlaceAt(
+        modelX - dims.width / 2,
+        modelY - dims.height / 2,
+        itemDef,
+        null,
+        dragState.rotation
+      );
     } else if (dragState.type === "placed") {
       const placed = placedItems.find((p) => p.instanceId === dragState.instanceId);
       const itemDef = getItemDef(placed.itemId);
-      check = canPlaceAt(modelX, modelY, itemDef, dragState.instanceId);
+      const dims = getPlacedDims(placed);
+      check = canPlaceAt(
+        modelX - dims.width / 2,
+        modelY - dims.height / 2,
+        itemDef,
+        dragState.instanceId,
+        placed.rotation
+      );
     }
 
     board.classList.add("drag-over");
@@ -577,17 +648,19 @@
     const modelY = Math.round(displayToModel(displayY));
 
     if (dragState?.type === "palette") {
-      placeItemAt(dragState.itemId, modelX, modelY);
+      placeItemAt(dragState.itemId, modelX, modelY, dragState.rotation);
     } else if (dragState?.type === "placed") {
       const placed = placedItems.find((p) => p.instanceId === dragState.instanceId);
       const itemDef = getItemDef(placed.itemId);
+      const dims = getPlacedDims(placed);
       let pos = clampPosition(
-        modelX - itemDef.width / 2,
-        modelY - itemDef.height / 2,
-        itemDef
+        modelX - dims.width / 2,
+        modelY - dims.height / 2,
+        itemDef,
+        placed.rotation
       );
-      pos = snapToGrid(pos.x, pos.y, itemDef.width, itemDef.height);
-      const check = canPlaceAt(pos.x, pos.y, itemDef, dragState.instanceId);
+      pos = snapToGrid(pos.x, pos.y, dims.width, dims.height);
+      const check = canPlaceAt(pos.x, pos.y, itemDef, dragState.instanceId, placed.rotation);
       if (!check.ok) {
         showToast(check.reason, true);
         return;
@@ -601,29 +674,52 @@
     dragState = null;
   }
 
+  function buildPlacedItemMarkup(placed, itemDef) {
+    const rot = normalizeRotation(placed.rotation);
+    const eff = getItemDims(itemDef, rot);
+    const rotClass = rot !== 0 ? " is-angled" : "";
+    const innerStyle =
+      rot !== 0
+        ? ` style="width:${modelToDisplay(itemDef.width)}px;height:${modelToDisplay(itemDef.height)}px;--item-rotation:${rot}deg"`
+        : "";
+    const dimText = `${eff.width}×${eff.height}${rotationLabel(rot)}`;
+
+    return `
+      <div class="placed-item-inner${rotClass}"${innerStyle}>
+        <img src="${assetUrl(itemDef.file)}" alt="${itemDef.name}" draggable="false">
+      </div>
+      <span class="dim-label">${dimText}</span>
+      <button class="rotate-btn" type="button" title="旋轉 90°（0→90→180→270）">↻</button>
+      <button class="remove-btn" type="button" title="移除">×</button>
+    `;
+  }
+
   function renderPlacedItems() {
     board.querySelectorAll(".placed-item").forEach((el) => el.remove());
 
     placedItems.forEach((placed) => {
       const itemDef = getItemDef(placed.itemId);
+      const eff = getPlacedDims(placed);
       const el = document.createElement("div");
       el.className = "placed-item";
       if (placed.instanceId === selectedPlacedId) el.classList.add("selected");
+      if (normalizeRotation(placed.rotation) !== 0) el.classList.add("is-rotated");
       el.dataset.instanceId = placed.instanceId;
       el.style.left = `${modelToDisplay(placed.x)}px`;
       el.style.top = `${modelToDisplay(placed.y)}px`;
-      el.style.width = `${modelToDisplay(itemDef.width)}px`;
-      el.style.height = `${modelToDisplay(itemDef.height)}px`;
+      el.style.width = `${modelToDisplay(eff.width)}px`;
+      el.style.height = `${modelToDisplay(eff.height)}px`;
 
-      el.innerHTML = `
-        <img src="${assetUrl(itemDef.file)}" alt="${itemDef.name}" draggable="false">
-        <span class="dim-label">${itemDef.width}×${itemDef.height}</span>
-        <button class="remove-btn" title="移除">×</button>
-      `;
+      el.innerHTML = buildPlacedItemMarkup(placed, itemDef);
 
       el.addEventListener("mousedown", (e) => onPlacedPointerDown(e, placed.instanceId));
       el.addEventListener("click", (e) => {
-        if (e.target.classList.contains("remove-btn")) return;
+        if (
+          e.target.classList.contains("remove-btn") ||
+          e.target.classList.contains("rotate-btn")
+        ) {
+          return;
+        }
         if (el.dataset.dragMoved === "1") {
           el.dataset.dragMoved = "0";
           return;
@@ -635,11 +731,47 @@
         e.stopPropagation();
         removePlaced(placed.instanceId);
       });
+      el.querySelector(".rotate-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        selectedPlacedId = placed.instanceId;
+        rotatePlaced(placed.instanceId);
+      });
 
       board.appendChild(el);
     });
 
     renderPlacedList();
+  }
+
+  function rotatePlaced(instanceId) {
+    const placed = placedItems.find((p) => p.instanceId === instanceId);
+    if (!placed) return;
+
+    const itemDef = getItemDef(placed.itemId);
+    const newRotation = nextRotation(placed.rotation);
+    const check = canPlaceAt(placed.x, placed.y, itemDef, instanceId, newRotation);
+    if (!check.ok) {
+      showToast(check.reason, true);
+      return;
+    }
+
+    placed.rotation = newRotation;
+    renderPlacedItems();
+    updateStatus();
+    updatePaletteState();
+    showToast(
+      newRotation === 0 ? "已恢復 0°（正常方向）" : `已旋轉至 ${newRotation}°`
+    );
+  }
+
+  function togglePaletteRotation() {
+    paletteRotation = nextRotation(paletteRotation);
+    updatePaletteState();
+    showToast(
+      paletteRotation === 0
+        ? "下次放置：0°（正常方向）"
+        : `下次放置：${paletteRotation}°`
+    );
   }
 
   function removePlaced(instanceId) {
@@ -659,9 +791,10 @@
     placedList.innerHTML = placedItems
       .map((p) => {
         const def = getItemDef(p.itemId);
+        const eff = getPlacedDims(p);
         return `<li>
           <span>${def.name}</span>
-          <span>${def.width}×${def.height}</span>
+          <span>${eff.width}×${eff.height}${rotationLabel(p.rotation)}</span>
         </li>`;
       })
       .join("");
@@ -716,10 +849,13 @@
       el.classList.toggle("disabled", disabled);
       const dims = el.querySelector(".dims");
       if (dims) {
+        const size = `${itemDef.width} × ${itemDef.height} mm`;
+        const rot = rotationLabel(paletteRotation);
         dims.textContent = disabled
-          ? `${itemDef.width} × ${itemDef.height} mm — 無可用空位`
-          : `${itemDef.width} × ${itemDef.height} mm`;
+          ? `${size}${rot} — 無可用空位`
+          : `${size}${rot}`;
       }
+      el.classList.toggle("palette-rotated", paletteRotation !== 0);
     });
   }
 
@@ -774,20 +910,25 @@
     if (!itemDef || hasNoAvailableSlot(itemDef)) return;
 
     e.preventDefault();
-    pointerDrag = { type: "palette", itemId };
+    pointerDrag = { type: "palette", itemId, rotation: paletteRotation };
 
+    const ghostDims = getItemDims(itemDef, paletteRotation);
     dragGhost = document.createElement("div");
-    dragGhost.className = "drag-ghost";
-    dragGhost.innerHTML = `<img src="${assetUrl(itemDef.file)}" alt="" draggable="false">`;
-    dragGhost.style.width = `${Math.min(modelToDisplay(itemDef.width), 120)}px`;
-    dragGhost.style.height = `${Math.min(modelToDisplay(itemDef.height), 120)}px`;
+    dragGhost.className = `drag-ghost${paletteRotation !== 0 ? " drag-ghost-rotated" : ""}`;
+    const ghostRotate =
+      paletteRotation !== 0 ? ` style="transform:rotate(${paletteRotation}deg)"` : "";
+    dragGhost.innerHTML = `<img src="${assetUrl(itemDef.file)}" alt="" draggable="false"${ghostRotate}>`;
+    dragGhost.style.width = `${Math.min(modelToDisplay(ghostDims.width), 120)}px`;
+    dragGhost.style.height = `${Math.min(modelToDisplay(ghostDims.height), 120)}px`;
     document.body.appendChild(dragGhost);
     moveDragGhost(e.clientX, e.clientY);
   }
 
   function onPlacedPointerDown(e, instanceId) {
     if (e.button !== 0) return;
-    if (e.target.classList.contains("remove-btn")) return;
+    if (e.target.classList.contains("remove-btn") || e.target.classList.contains("rotate-btn")) {
+      return;
+    }
 
     const placed = placedItems.find((p) => p.instanceId === instanceId);
     if (!placed) return;
@@ -851,12 +992,14 @@
     board.classList.add("drag-over");
     if (pointerDrag.type === "palette") {
       const itemDef = getItemDef(pointerDrag.itemId);
+      const dims = getItemDims(itemDef, pointerDrag.rotation);
       const centered = clampPosition(
-        coords.x - itemDef.width / 2,
-        coords.y - itemDef.height / 2,
-        itemDef
+        coords.x - dims.width / 2,
+        coords.y - dims.height / 2,
+        itemDef,
+        pointerDrag.rotation
       );
-      const check = canPlaceAt(centered.x, centered.y, itemDef);
+      const check = canPlaceAt(centered.x, centered.y, itemDef, null, pointerDrag.rotation);
       board.classList.toggle("drag-invalid", !check.ok);
     } else if (pointerDrag.type === "placed") {
       const placed = placedItems.find((p) => p.instanceId === pointerDrag.instanceId);
@@ -866,14 +1009,21 @@
       const clamped = clampPosition(
         coords.x - pointerDrag.offsetX,
         coords.y - pointerDrag.offsetY,
-        itemDef
+        itemDef,
+        placed.rotation
       );
       placed.x = clamped.x;
       placed.y = clamped.y;
       pointerDrag.moved = true;
       updatePlacedElement(placed);
 
-      const check = canPlaceAt(clamped.x, clamped.y, itemDef, pointerDrag.instanceId);
+      const check = canPlaceAt(
+        clamped.x,
+        clamped.y,
+        itemDef,
+        pointerDrag.instanceId,
+        placed.rotation
+      );
       board.classList.toggle("drag-invalid", !check.ok);
     }
   }
@@ -885,15 +1035,22 @@
     board.classList.remove("drag-over", "drag-invalid");
 
     if (pointerDrag.type === "palette" && coords.inside) {
-      placeItemAt(pointerDrag.itemId, coords.x, coords.y);
+      placeItemAt(pointerDrag.itemId, coords.x, coords.y, pointerDrag.rotation);
     } else if (pointerDrag.type === "placed") {
       const placed = placedItems.find((p) => p.instanceId === pointerDrag.instanceId);
       if (placed) {
         const itemDef = getItemDef(placed.itemId);
-        const snapped = snapToGrid(placed.x, placed.y, itemDef.width, itemDef.height);
+        const dims = getPlacedDims(placed);
+        const snapped = snapToGrid(placed.x, placed.y, dims.width, dims.height);
         placed.x = snapped.x;
         placed.y = snapped.y;
-        const check = canPlaceAt(placed.x, placed.y, itemDef, pointerDrag.instanceId);
+        const check = canPlaceAt(
+          placed.x,
+          placed.y,
+          itemDef,
+          pointerDrag.instanceId,
+          placed.rotation
+        );
         if (!check.ok) {
           placed.x = pointerDrag.startX;
           placed.y = pointerDrag.startY;
@@ -953,8 +1110,19 @@
     });
 
     document.addEventListener("keydown", (e) => {
+      if (e.target.matches("input, textarea, select")) return;
+
       if (e.key === "Delete" && selectedPlacedId) {
         removePlaced(selectedPlacedId);
+        return;
+      }
+
+      if (e.key === "r" || e.key === "R") {
+        if (selectedPlacedId) {
+          rotatePlaced(selectedPlacedId);
+        } else {
+          togglePaletteRotation();
+        }
       }
     });
   }
