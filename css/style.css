@@ -59,6 +59,25 @@ header p {
   color: var(--text-muted);
 }
 
+.data-source-badge {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  color: var(--accent);
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 999px;
+}
+
+.data-source-badge[data-source="config"],
+.data-source-badge[data-source="local"],
+.data-source-badge[data-source="embedded"] {
+  color: var(--warning);
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
 .header-actions {
   display: flex;
   align-items: center;

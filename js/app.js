@@ -10,6 +10,7 @@
   let dragState = null;
   let scale = 1;
   let exportInProgress = false;
+  let dataSource = "embedded";
   const imageCache = new Map();
   const adminImageUrls = new Map();
 
@@ -49,6 +50,23 @@
     buildPalette();
     bindEvents();
     bindPointerDrag();
+    updateDataSourceBadge();
+  }
+
+  function updateDataSourceBadge() {
+    const el = $("#data-source-badge");
+    if (!el) return;
+
+    const labels = {
+      firebase: "資料來源：Firebase 雲端",
+      config: "資料來源：config.json（repo）",
+      local: "資料來源：本機瀏覽器",
+      embedded: "資料來源：內建預設",
+    };
+
+    el.textContent = labels[dataSource] || labels.embedded;
+    el.hidden = false;
+    el.dataset.source = dataSource;
   }
 
   async function loadFirebaseConfig() {
@@ -58,6 +76,7 @@
       if (!cloudConfig?.backgrounds?.length && !cloudConfig?.items?.length) return false;
 
       config = cloudConfig;
+      dataSource = "firebase";
       const urls = await TrainModelFirebase.loadImageUrlsForConfig(config);
       urls.forEach((url, path) => adminImageUrls.set(path, url));
       return true;
@@ -73,6 +92,7 @@
       if (!adminConfig?.backgrounds?.length && !adminConfig?.items?.length) return;
 
       config = adminConfig;
+      dataSource = "local";
       const urls = await TrainModelStore.loadImageUrlsForConfig(config);
       urls.forEach((url, path) => adminImageUrls.set(path, url));
     } catch {
@@ -88,6 +108,7 @@
         const res = await fetch("config.json");
         if (res.ok) {
           config = await res.json();
+          dataSource = "config";
         }
       } catch {
         /* file:// fallback */
@@ -112,6 +133,7 @@
 
     if (!config.backgrounds?.length) {
       config = getEmbeddedConfig();
+      dataSource = "embedded";
     }
   }
 
