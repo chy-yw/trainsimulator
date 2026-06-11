@@ -66,6 +66,25 @@
       .catch(() => {});
   }
 
+  function normalizeEntry(entry) {
+    return {
+      id: entry.id,
+      name: entry.name,
+      file: entry.file,
+      width: entry.width,
+      height: entry.height,
+      userCanEditDims: entry.userCanEditDims !== false,
+    };
+  }
+
+  function normalizeConfig(config) {
+    return {
+      version: 2,
+      backgrounds: (config.backgrounds || []).map(normalizeEntry),
+      items: (config.items || []).map(normalizeEntry),
+    };
+  }
+
   async function getConfig() {
     const ready = await init();
     if (!ready) return null;
@@ -77,12 +96,7 @@
 
     if (!snap.exists) return null;
 
-    const data = snap.data();
-    return {
-      version: data.version || 2,
-      backgrounds: data.backgrounds || [],
-      items: data.items || [],
-    };
+    return normalizeConfig(snap.data());
   }
 
   async function saveConfig(config) {
@@ -91,13 +105,13 @@
       throw new Error("Admin must be signed in to save to Firebase.");
     }
 
+    const payload = normalizeConfig(config);
+
     await db
       .collection(CONFIG_DOC.collection)
       .doc(CONFIG_DOC.id)
       .set({
-        version: 2,
-        backgrounds: config.backgrounds || [],
-        items: config.items || [],
+        ...payload,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
   }

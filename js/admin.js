@@ -111,6 +111,7 @@
     } else {
       config = await loadBaseConfig();
     }
+    normalizeConfigEntries(config);
     await refreshPreviewUrls();
   }
 
@@ -166,6 +167,13 @@
 
   function sanitizeFilename(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-");
+  }
+
+  function normalizeConfigEntries(cfg) {
+    [...(cfg.backgrounds || []), ...(cfg.items || [])].forEach((entry) => {
+      entry.userCanEditDims = entry.userCanEditDims !== false;
+    });
+    return cfg;
   }
 
   function renderList(type) {
@@ -338,6 +346,7 @@
     btn.disabled = true;
 
     try {
+      normalizeConfigEntries(config);
       await TrainModelFirebase.publishConfig(config, resolveImageBlob);
       await TrainModelStore.saveConfig(config);
       await refreshPreviewUrls();
