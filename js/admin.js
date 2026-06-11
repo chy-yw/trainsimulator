@@ -194,6 +194,12 @@
                   <input type="number" min="1" data-field="height" value="${entry.height}">
                 </div>
               </div>
+              <label class="admin-toggle">
+                <input type="checkbox" data-field="userCanEditDims" ${
+                  entry.userCanEditDims !== false ? "checked" : ""
+                }>
+                <span>允許使用者在前端自行調整寬高</span>
+              </label>
               <div class="meta">${folder}/${escapeHtml(entry.file.split("/").pop())}</div>
             </div>
             <div class="card-actions">
@@ -217,6 +223,7 @@
           if (field === "name") entry.name = input.value.trim() || entry.name;
           if (field === "width") entry.width = Math.max(1, parseInt(input.value, 10) || entry.width);
           if (field === "height") entry.height = Math.max(1, parseInt(input.value, 10) || entry.height);
+          if (field === "userCanEditDims") entry.userCanEditDims = input.checked;
         });
       });
 
@@ -304,6 +311,7 @@
       file: `${folder}/${id}-placeholder.jpg`,
       width: isBg ? 3200 : 500,
       height: isBg ? 2400 : 500,
+      userCanEditDims: true,
     });
     renderAll();
   }

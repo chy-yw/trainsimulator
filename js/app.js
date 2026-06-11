@@ -142,8 +142,10 @@
       saved.backgrounds.forEach((sb) => {
         const bg = config.backgrounds.find((b) => b.id === sb.id);
         if (bg) {
-          bg.width = sb.width;
-          bg.height = sb.height;
+          if (canUserEditDims(bg)) {
+            bg.width = sb.width;
+            bg.height = sb.height;
+          }
           if (sb.name) bg.name = sb.name;
         }
       });
@@ -152,8 +154,10 @@
       saved.items.forEach((si) => {
         const item = config.items.find((i) => i.id === si.id);
         if (item) {
-          item.width = si.width;
-          item.height = si.height;
+          if (canUserEditDims(item)) {
+            item.width = si.width;
+            item.height = si.height;
+          }
           if (si.name) item.name = si.name;
         }
       });
@@ -163,18 +167,12 @@
   function saveConfig() {
     const payload = {
       version: 2,
-      backgrounds: config.backgrounds.map(({ id, name, width, height }) => ({
-        id,
-        name,
-        width,
-        height,
-      })),
-      items: config.items.map(({ id, name, width, height }) => ({
-        id,
-        name,
-        width,
-        height,
-      })),
+      backgrounds: config.backgrounds
+        .filter(canUserEditDims)
+        .map(({ id, name, width, height }) => ({ id, name, width, height })),
+      items: config.items
+        .filter(canUserEditDims)
+        .map(({ id, name, width, height }) => ({ id, name, width, height })),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     showToast("尺寸設定已儲存");
@@ -188,33 +186,59 @@
     return config.items.find((i) => i.id === itemId);
   }
 
+  function canUserEditDims(entry) {
+    return entry?.userCanEditDims !== false;
+  }
+
   function buildBgSelect() {
     bgSelect.innerHTML = config.backgrounds
       .map((bg) => `<option value="${bg.id}">${bg.name}</option>`)
       .join("");
   }
 
+  function buildDimFields(entry, widthAttr, heightAttr) {
+    if (canUserEditDims(entry)) {
+      return `
+        <div class="dim-row">
+          <div class="field">
+            <label>寬度 (mm)</label>
+            <input type="number" min="1" ${widthAttr} value="${entry.width}">
+          </div>
+          <div class="field">
+            <label>高度 (mm)</label>
+            <input type="number" min="1" ${heightAttr} value="${entry.height}">
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="dim-row dim-row-locked">
+        <div class="field">
+          <label>寬度 (mm)</label>
+          <span class="dim-readonly">${entry.width}</span>
+        </div>
+        <div class="field">
+          <label>高度 (mm)</label>
+          <span class="dim-readonly">${entry.height}</span>
+        </div>
+      </div>
+      <p class="dim-lock-hint">尺寸由管理員鎖定</p>
+    `;
+  }
+
   function buildBgConfig() {
     bgConfig.innerHTML = "";
     config.backgrounds.forEach((bg) => {
       const card = document.createElement("div");
-      card.className = "config-card";
+      card.className = `config-card${canUserEditDims(bg) ? "" : " config-card-locked"}`;
       card.dataset.bgId = bg.id;
       card.innerHTML = `
         <div class="card-title">
           <img src="${assetUrl(bg.file)}" alt="">
           <span>${bg.name}</span>
         </div>
-        <div class="dim-row">
-          <div class="field">
-            <label>寬度 (mm)</label>
-            <input type="number" min="1" data-bg-width="${bg.id}" value="${bg.width}">
-          </div>
-          <div class="field">
-            <label>高度 (mm)</label>
-            <input type="number" min="1" data-bg-height="${bg.id}" value="${bg.height}">
-          </div>
-        </div>
+        ${buildDimFields(bg, `data-bg-width="${bg.id}"`, `data-bg-height="${bg.id}"`)}
       `;
       bgConfig.appendChild(card);
     });
@@ -224,22 +248,13 @@
     itemsConfig.innerHTML = "";
     config.items.forEach((item) => {
       const card = document.createElement("div");
-      card.className = "config-card";
+      card.className = `config-card${canUserEditDims(item) ? "" : " config-card-locked"}`;
       card.innerHTML = `
         <div class="card-title">
           <img src="${assetUrl(item.file)}" alt="">
           <span>${item.name}</span>
         </div>
-        <div class="dim-row">
-          <div class="field">
-            <label>寬度 (mm)</label>
-            <input type="number" min="1" data-item-width="${item.id}" value="${item.width}">
-          </div>
-          <div class="field">
-            <label>高度 (mm)</label>
-            <input type="number" min="1" data-item-height="${item.id}" value="${item.height}">
-          </div>
-        </div>
+        ${buildDimFields(item, `data-item-width="${item.id}"`, `data-item-height="${item.id}"`)}
       `;
       itemsConfig.appendChild(card);
     });
@@ -339,54 +354,24 @@
     };
   }
 
-  function groupIntoGridRows(rects, cell) {
-    if (!rects.length) return [];
-
-    const sorted = [...rects].sort((a, b) => a.y - b.y || a.x - b.x);
-    const rows = [];
-
-    for (const rect of sorted) {
-      let row = rows.find((r) => Math.abs(rect.y - r.y) <= cell / 2);
-      if (!row) {
-        row = { y: rect.y, items: [] };
-        rows.push(row);
-      }
-      row.items.push(rect);
-    }
-
-    return rows.map((row) => {
-      const left = Math.min(...row.items.map((i) => i.x));
-      const right = Math.max(...row.items.map((i) => i.x + i.width));
-      return {
-        y: row.y,
-        width: right - left,
-        height: Math.max(...row.items.map((i) => i.height)),
-        items: row.items,
-      };
-    });
-  }
-
-  function getGridFootprint(excludePlacedId = null, extraRect = null) {
+  function getPlacementBounds(excludePlacedId = null) {
     const rects = getPlacedRects(excludePlacedId);
-    if (extraRect) rects.push(extraRect);
-
     if (!rects.length) {
-      return { occupiedWidth: 0, occupiedHeight: 0, rowCount: 0, count: 0 };
+      return { width: 0, height: 0, count: 0, area: 0 };
     }
 
-    const rows = groupIntoGridRows(rects, getGridCell());
-    return {
-      occupiedWidth: Math.max(...rows.map((r) => r.width)),
-      occupiedHeight: rows.reduce((sum, r) => sum + r.height, 0),
-      rowCount: rows.length,
-      count: rects.length,
-    };
-  }
+    const minX = Math.min(...rects.map((r) => r.x));
+    const minY = Math.min(...rects.map((r) => r.y));
+    const maxX = Math.max(...rects.map((r) => r.x + r.width));
+    const maxY = Math.max(...rects.map((r) => r.y + r.height));
+    const area = rects.reduce((sum, r) => sum + r.width * r.height, 0);
 
-  function footprintExceedsBoard(footprint) {
-    const bg = getCurrentBg();
-    if (!bg) return false;
-    return footprint.occupiedWidth > bg.width || footprint.occupiedHeight > bg.height;
+    return {
+      width: maxX - minX,
+      height: maxY - minY,
+      count: rects.length,
+      area,
+    };
   }
 
   function findNextGridSlot(itemDef, excludePlacedId = null) {
@@ -399,18 +384,8 @@
 
     for (let y = 0; y <= maxY; y += cell) {
       for (let x = 0; x <= maxX; x += cell) {
-        const check = canPlaceAt(x, y, itemDef, excludePlacedId, { skipFootprint: true });
-        if (!check.ok) continue;
-
-        const footprint = getGridFootprint(excludePlacedId, {
-          x,
-          y,
-          width: itemDef.width,
-          height: itemDef.height,
-        });
-        if (!footprintExceedsBoard(footprint)) {
-          return { x, y };
-        }
+        const check = canPlaceAt(x, y, itemDef, excludePlacedId);
+        if (check.ok) return { x, y };
       }
     }
     return null;
@@ -438,7 +413,7 @@
     });
   }
 
-  function canPlaceAt(x, y, itemDef, excludePlacedId = null, options = {}) {
+  function canPlaceAt(x, y, itemDef, excludePlacedId = null) {
     const bg = getCurrentBg();
     const w = itemDef.width;
     const h = itemDef.height;
@@ -457,27 +432,12 @@
       };
     }
 
-    if (!options.skipFootprint) {
-      const footprint = getGridFootprint(excludePlacedId, {
-        x,
-        y,
-        width: w,
-        height: h,
-      });
-      if (footprintExceedsBoard(footprint)) {
-        return {
-          ok: false,
-          reason: `網格佔用尺寸 (${footprint.occupiedWidth}×${footprint.occupiedHeight} mm) 超過底板限制`,
-        };
-      }
-    }
-
     return { ok: true };
   }
 
-  function wouldExceedIfAdded(itemDef) {
+  function hasNoAvailableSlot(itemDef, excludePlacedId = null) {
     if (!itemDef) return false;
-    return findNextGridSlot(itemDef) === null;
+    return findNextGridSlot(itemDef, excludePlacedId) === null;
   }
 
   function clampPosition(x, y, itemDef) {
@@ -494,8 +454,8 @@
     const itemDef = getItemDef(itemId);
     if (!itemDef) return false;
 
-    if (wouldExceedIfAdded(itemDef)) {
-      showToast("無法添加：底板網格已無可用空間", true);
+    if (hasNoAvailableSlot(itemDef)) {
+      showToast("無法添加：底板上已無可放置的空位", true);
       return false;
     }
 
@@ -628,12 +588,9 @@
     const itemId = e.currentTarget.dataset.itemId;
     const itemDef = getItemDef(itemId);
 
-    if (wouldExceedIfAdded(itemDef)) {
+    if (hasNoAvailableSlot(itemDef)) {
       e.preventDefault();
-      showToast(
-        `無法添加：底板網格已無可用空間`,
-        true
-      );
+      showToast("無法添加：底板上已無可放置的空位", true);
       return;
     }
 
@@ -782,36 +739,41 @@
   function updateStatus() {
     const bg = getCurrentBg();
     if (!bg) return;
-    const footprint = getGridFootprint();
-    const widthPct = Math.min(100, (footprint.occupiedWidth / bg.width) * 100);
-    const heightPct = Math.min(100, (footprint.occupiedHeight / bg.height) * 100);
-    const widthOk = footprint.occupiedWidth <= bg.width;
-    const heightOk = footprint.occupiedHeight <= bg.height;
-    const allOk = widthOk && heightOk;
+    const bounds = getPlacementBounds();
+    const boardArea = bg.width * bg.height;
+    const areaPct = bounds.area ? Math.min(100, (bounds.area / boardArea) * 100) : 0;
 
-    statusCard.className = `status-card ${allOk ? "ok" : "error"}`;
+    statusCard.className = "status-card ok";
+
+    if (!bounds.count) {
+      statusCard.innerHTML = `
+        <div class="status-title">尚未貼上組件</div>
+        <div class="hint">底板尺寸 ${bg.width} × ${bg.height} mm。只要位置在底板內且不重疊，即可自由放置組件。</div>
+      `;
+      return;
+    }
 
     statusCard.innerHTML = `
-      <div class="status-title">${allOk ? "✓ 網格佔用在限制內" : "✗ 網格佔用超出底板"}</div>
+      <div class="status-title">✓ 可自由排版</div>
       <div class="meter">
         <div class="meter-label">
-          <span>佔用寬度</span>
-          <span>${footprint.occupiedWidth} / ${bg.width} mm</span>
+          <span>排版外框寬度</span>
+          <span>${bounds.width} / ${bg.width} mm</span>
         </div>
         <div class="meter-bar">
-          <div class="meter-fill ${widthOk ? (widthPct > 80 ? "warn" : "ok") : "error"}" style="width:${widthPct}%"></div>
+          <div class="meter-fill ok" style="width:${Math.min(100, (bounds.width / bg.width) * 100)}%"></div>
         </div>
       </div>
       <div class="meter">
         <div class="meter-label">
-          <span>佔用高度</span>
-          <span>${footprint.occupiedHeight} / ${bg.height} mm</span>
+          <span>排版外框高度</span>
+          <span>${bounds.height} / ${bg.height} mm</span>
         </div>
         <div class="meter-bar">
-          <div class="meter-fill ${heightOk ? (heightPct > 80 ? "warn" : "ok") : "error"}" style="width:${heightPct}%"></div>
+          <div class="meter-fill ok" style="width:${Math.min(100, (bounds.height / bg.height) * 100)}%"></div>
         </div>
       </div>
-      <div class="hint">已貼上 ${placedItems.length} 個組件，排列為 ${footprint.rowCount} 行。組件會對齊網格，同行共用高度、同列累加寬度。</div>
+      <div class="hint">已貼上 ${bounds.count} 個組件，組件總面積約佔底板 ${areaPct.toFixed(1)}%。僅在超出邊界或重疊時無法放置。</div>
     `;
   }
 
@@ -819,12 +781,12 @@
     $$(".palette-item").forEach((el) => {
       const itemId = el.dataset.itemId;
       const itemDef = getItemDef(itemId);
-      const disabled = wouldExceedIfAdded(itemDef);
+      const disabled = hasNoAvailableSlot(itemDef);
       el.classList.toggle("disabled", disabled);
       const dims = el.querySelector(".dims");
       if (dims) {
         dims.textContent = disabled
-          ? `${itemDef.width} × ${itemDef.height} mm — 網格已滿`
+          ? `${itemDef.width} × ${itemDef.height} mm — 無可用空位`
           : `${itemDef.width} × ${itemDef.height} mm`;
       }
     });
@@ -832,6 +794,7 @@
 
   function applyConfigFromInputs() {
     config.backgrounds.forEach((bg) => {
+      if (!canUserEditDims(bg)) return;
       const wInput = document.querySelector(`[data-bg-width="${bg.id}"]`);
       const hInput = document.querySelector(`[data-bg-height="${bg.id}"]`);
       if (wInput) bg.width = Math.max(1, parseInt(wInput.value, 10) || bg.width);
@@ -839,6 +802,7 @@
     });
 
     config.items.forEach((item) => {
+      if (!canUserEditDims(item)) return;
       const wInput = document.querySelector(`[data-item-width="${item.id}"]`);
       const hInput = document.querySelector(`[data-item-height="${item.id}"]`);
       if (wInput) item.width = Math.max(1, parseInt(wInput.value, 10) || item.width);
@@ -876,7 +840,7 @@
 
     const itemId = el.dataset.itemId;
     const itemDef = getItemDef(itemId);
-    if (!itemDef || wouldExceedIfAdded(itemDef)) return;
+    if (!itemDef || hasNoAvailableSlot(itemDef)) return;
 
     e.preventDefault();
     pointerDrag = { type: "palette", itemId };

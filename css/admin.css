@@ -73,6 +73,24 @@
   gap: 12px;
 }
 
+.admin-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.8rem;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.admin-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .admin-card {
   display: grid;
   grid-template-columns: 88px 1fr auto;

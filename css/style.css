@@ -172,6 +172,26 @@ header p {
   border-radius: 4px;
 }
 
+.config-card-locked {
+  opacity: 0.92;
+}
+
+.dim-readonly {
+  display: block;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.dim-lock-hint {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
