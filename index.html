@@ -3,41 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>列車建模 — 3D 底板模擬</title>
+  <title>列車建模 — 3D 背景模擬</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div class="app">
     <header>
       <div>
-        <h1>列車建模 · 3D 底板模擬</h1>
-        <p>拖放組件到底板上 · 可設定各項寬高 · 超出邊界或重疊時無法貼上</p>
+        <h1>列車建模 · 3D 背景模擬</h1>
+        <p>拖放組件到背景上 · 可設定各項寬高 · 超出邊界或重疊時無法貼上</p>
         <p class="data-source-badge" id="data-source-badge" hidden></p>
       </div>
       <div class="header-actions">
         <a class="btn btn-ghost" href="admin.html">管理後台</a>
         <button class="btn btn-primary" id="save-image" type="button">儲存圖片</button>
-        <button class="btn btn-ghost" id="clear-board" type="button">清空底板</button>
+        <button class="btn btn-ghost" id="clear-board" type="button">清空背景</button>
       </div>
     </header>
 
     <aside class="panel panel-left">
-      <h2>選擇底板</h2>
+      <h2>選擇背景</h2>
       <div class="field">
         <select id="bg-select"></select>
       </div>
 
-      <h2>底板尺寸設定</h2>
+      <h2>背景尺寸設定</h2>
       <div id="bg-config"></div>
 
       <h2>組件尺寸設定</h2>
       <div id="items-config"></div>
 
-      <div style="display:flex;gap:8px;margin-top:12px">
-        <button class="btn btn-primary" id="apply-config" style="flex:1">套用尺寸</button>
-        <button class="btn btn-ghost" id="save-config" style="flex:1">儲存設定</button>
+      <div style="margin-top:12px">
+        <button class="btn btn-primary" id="apply-config" style="width:100%">套用尺寸</button>
       </div>
-      <p class="hint">單位為毫米 (mm)。修改後請按「套用尺寸」。</p>
+      <p class="hint">單位為毫米 (mm)。尺寸來自雲端設定，修改後請按「套用尺寸」（僅本次排版有效）。</p>
     </aside>
 
     <main class="viewport">
@@ -62,17 +61,17 @@
 
         <p class="hint" style="margin-top:16px">
           <strong>操作說明</strong><br>
-          從右側下方拖動組件到底板貼上。<br>
+          從右側下方拖動組件到背景貼上。<br>
           已貼上的組件可再次拖動調整位置。<br>
           點選組件後按 Delete 或點 × 移除。<br>
           組件會自動對齊網格。<br>
-          只要底板內有空位且不重疊，即可繼續放置組件。<br>
+          只要背景內有空位且不重疊，即可繼續放置組件。<br>
           完成排版後按上方「儲存圖片」匯出合成圖。
         </p>
       </div>
 
       <div class="palette-section">
-        <h2>組件庫（拖放到中央底板）</h2>
+        <h2>組件庫（拖放到中央背景）</h2>
         <div class="palette" id="palette"></div>
       </div>
     </aside>
@@ -84,7 +83,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
   <script src="js/firebase-config.js"></script>
   <script src="js/firebase-store.js"></script>
-  <script src="js/store.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

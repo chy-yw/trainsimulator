@@ -1,8 +1,6 @@
 (function () {
   "use strict";
 
-  const STORAGE_KEY = "trainModelConfig";
-
   let config = { backgrounds: [], items: [] };
   let currentBgId = null;
   let placedItems = [];
@@ -10,7 +8,7 @@
   let dragState = null;
   let scale = 1;
   let exportInProgress = false;
-  let dataSource = "embedded";
+  let dataSource = "error";
   const imageCache = new Map();
   const adminImageUrls = new Map();
 
@@ -42,7 +40,15 @@
   const toast = $("#toast");
 
   async function init() {
-    await loadConfig();
+    const loaded = await loadConfig();
+    updateDataSourceBadge();
+
+    if (!loaded) {
+      showLoadError();
+      bindEvents();
+      return;
+    }
+
     buildBgSelect();
     buildBgConfig();
     buildItemsConfig();
@@ -50,30 +56,46 @@
     buildPalette();
     bindEvents();
     bindPointerDrag();
-    updateDataSourceBadge();
   }
 
   function updateDataSourceBadge() {
     const el = $("#data-source-badge");
     if (!el) return;
 
-    const labels = {
-      firebase: "資料來源：Firebase 雲端",
-      config: "資料來源：config.json（repo）",
-      local: "資料來源：本機瀏覽器",
-      embedded: "資料來源：內建預設",
-    };
+    if (dataSource === "firebase") {
+      el.textContent = "資料來源：Firebase 雲端";
+      el.dataset.source = "firebase";
+      el.hidden = false;
+      return;
+    }
 
-    el.textContent = labels[dataSource] || labels.embedded;
+    el.textContent = "無法載入雲端資料";
+    el.dataset.source = "error";
     el.hidden = false;
-    el.dataset.source = dataSource;
   }
 
-  async function loadFirebaseConfig() {
-    if (!window.TrainModelFirebase?.isConfigured()) return false;
+  function showLoadError() {
+    bgConfig.innerHTML =
+      '<p class="hint" style="color:var(--danger)">無法從 Firebase 載入設定。請確認網路連線，或請管理員至後台發布資料。</p>';
+    itemsConfig.innerHTML = "";
+    statusCard.className = "status-card error";
+    statusCard.innerHTML =
+      '<div class="status-title">✗ 雲端資料載入失敗</div><div class="hint">請稍後重新整理，或聯絡管理員。</div>';
+    showToast("無法載入雲端資料", true);
+  }
+
+  async function loadConfig() {
+    if (!window.TrainModelFirebase?.isConfigured()) {
+      dataSource = "error";
+      return false;
+    }
+
     try {
       const cloudConfig = await TrainModelFirebase.getConfig();
-      if (!cloudConfig?.backgrounds?.length && !cloudConfig?.items?.length) return false;
+      if (!cloudConfig?.backgrounds?.length && !cloudConfig?.items?.length) {
+        dataSource = "error";
+        return false;
+      }
 
       config = cloudConfig;
       dataSource = "firebase";
@@ -81,123 +103,9 @@
       urls.forEach((url, path) => adminImageUrls.set(path, url));
       return true;
     } catch {
+      dataSource = "error";
       return false;
     }
-  }
-
-  async function loadAdminConfig() {
-    if (!window.TrainModelStore) return;
-    try {
-      const adminConfig = await TrainModelStore.getConfig();
-      if (!adminConfig?.backgrounds?.length && !adminConfig?.items?.length) return;
-
-      config = adminConfig;
-      dataSource = "local";
-      const urls = await TrainModelStore.loadImageUrlsForConfig(config);
-      urls.forEach((url, path) => adminImageUrls.set(path, url));
-    } catch {
-      /* IndexedDB unavailable */
-    }
-  }
-
-  async function loadConfig() {
-    const loadedFromFirebase = await loadFirebaseConfig();
-
-    if (!loadedFromFirebase) {
-      try {
-        const res = await fetch("config.json");
-        if (res.ok) {
-          config = await res.json();
-          dataSource = "config";
-        }
-      } catch {
-        /* file:// fallback */
-      }
-
-      await loadAdminConfig();
-    }
-
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.version === 2) {
-          mergeConfig(parsed);
-        } else {
-          localStorage.removeItem(STORAGE_KEY);
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-
-    if (!config.backgrounds?.length) {
-      config = getEmbeddedConfig();
-      dataSource = "embedded";
-    }
-  }
-
-  function getEmbeddedConfig() {
-    return {
-      backgrounds: [
-        { id: "bg1", name: "車廂 A（車門區）", file: "background/bg-1.jpeg", width: 3200, height: 2400 },
-        { id: "bg2", name: "車廂 B（窗戶區）", file: "background/bg-2.jpeg", width: 3200, height: 2400 },
-        { id: "bg3", name: "車廂 C", file: "background/bg-3.jpeg", width: 3200, height: 2400 },
-        { id: "bg4", name: "車廂 D", file: "background/bg-4.jpeg", width: 3200, height: 2400 },
-      ],
-      items: [
-        { id: "item1", name: "組件 1", file: "items/item-1.jpg", width: 800, height: 600 },
-        { id: "item2", name: "組件 2", file: "items/item-2.jpg", width: 600, height: 600 },
-        { id: "item3", name: "組件 3", file: "items/item-3.jpg", width: 700, height: 500 },
-        { id: "item4", name: "組件 4", file: "items/item-4.jpg", width: 500, height: 400 },
-        { id: "item5", name: "組件 5", file: "items/item-5.jpg", width: 450, height: 450 },
-        { id: "item6", name: "組件 6", file: "items/Picture8.jpg", width: 900, height: 350 },
-        { id: "item7", name: "組件 7", file: "items/Picture9.jpg", width: 500, height: 500 },
-        { id: "item8", name: "組件 8", file: "items/Picture10.jpg", width: 450, height: 450 },
-        { id: "item9", name: "組件 9", file: "items/Picture11.jpg", width: 600, height: 500 },
-      ],
-    };
-  }
-
-  function mergeConfig(saved) {
-    if (saved.backgrounds) {
-      saved.backgrounds.forEach((sb) => {
-        const bg = config.backgrounds.find((b) => b.id === sb.id);
-        if (bg) {
-          if (canUserEditDims(bg)) {
-            bg.width = sb.width;
-            bg.height = sb.height;
-          }
-          if (sb.name) bg.name = sb.name;
-        }
-      });
-    }
-    if (saved.items) {
-      saved.items.forEach((si) => {
-        const item = config.items.find((i) => i.id === si.id);
-        if (item) {
-          if (canUserEditDims(item)) {
-            item.width = si.width;
-            item.height = si.height;
-          }
-          if (si.name) item.name = si.name;
-        }
-      });
-    }
-  }
-
-  function saveConfig() {
-    const payload = {
-      version: 2,
-      backgrounds: config.backgrounds
-        .filter(canUserEditDims)
-        .map(({ id, name, width, height }) => ({ id, name, width, height })),
-      items: config.items
-        .filter(canUserEditDims)
-        .map(({ id, name, width, height }) => ({ id, name, width, height })),
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    showToast("尺寸設定已儲存");
   }
 
   function getCurrentBg() {
@@ -443,7 +351,7 @@
     if (x < 0 || y < 0 || x + w > bg.width || y + h > bg.height) {
       return {
         ok: false,
-        reason: "組件超出底板邊界，無法貼上",
+        reason: "組件超出背景邊界，無法貼上",
       };
     }
 
@@ -477,7 +385,7 @@
     if (!itemDef) return false;
 
     if (hasNoAvailableSlot(itemDef)) {
-      showToast("無法添加：底板上已無可放置的空位", true);
+      showToast("無法添加：背景上已無可放置的空位", true);
       return false;
     }
 
@@ -612,7 +520,7 @@
 
     if (hasNoAvailableSlot(itemDef)) {
       e.preventDefault();
-      showToast("無法添加：底板上已無可放置的空位", true);
+      showToast("無法添加：背景上已無可放置的空位", true);
       return;
     }
 
@@ -770,7 +678,7 @@
     if (!bounds.count) {
       statusCard.innerHTML = `
         <div class="status-title">尚未貼上組件</div>
-        <div class="hint">底板尺寸 ${bg.width} × ${bg.height} mm。只要位置在底板內且不重疊，即可自由放置組件。</div>
+        <div class="hint">背景尺寸 ${bg.width} × ${bg.height} mm。只要位置在背景內且不重疊，即可自由放置組件。</div>
       `;
       return;
     }
@@ -795,7 +703,7 @@
           <div class="meter-fill ok" style="width:${Math.min(100, (bounds.height / bg.height) * 100)}%"></div>
         </div>
       </div>
-      <div class="hint">已貼上 ${bounds.count} 個組件，組件總面積約佔底板 ${areaPct.toFixed(1)}%。僅在超出邊界或重疊時無法放置。</div>
+      <div class="hint">已貼上 ${bounds.count} 個組件，組件總面積約佔背景 ${areaPct.toFixed(1)}%。僅在超出邊界或重疊時無法放置。</div>
     `;
   }
 
@@ -1016,12 +924,7 @@
   function bindEvents() {
     bgSelect.addEventListener("change", (e) => selectBackground(e.target.value));
 
-    $("#save-config").addEventListener("click", () => {
-      applyConfigFromInputs();
-      saveConfig();
-    });
-
-    $("#apply-config").addEventListener("click", () => {
+    $("#apply-config")?.addEventListener("click", () => {
       applyConfigFromInputs();
       showToast("尺寸已套用");
     });
@@ -1036,7 +939,7 @@
       renderPlacedItems();
       updateStatus();
       updatePaletteState();
-      showToast("底板已清空");
+      showToast("背景已清空");
     });
 
     board.addEventListener("dragover", onBoardDragOver);

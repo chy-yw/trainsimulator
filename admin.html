@@ -32,21 +32,19 @@
         <button class="btn btn-ghost" id="logout-btn" type="button">登出</button>
         <button class="btn btn-ghost" id="import-zip-btn" type="button">匯入 ZIP</button>
         <button class="btn btn-primary" id="save-cloud-btn" type="button">儲存到雲端</button>
-        <button class="btn btn-ghost" id="save-local-btn" type="button">儲存到瀏覽器</button>
-        <button class="btn btn-ghost" id="export-zip-btn" type="button">匯出 ZIP</button>
-        <button class="btn btn-ghost" id="reset-local-btn" type="button">清除本機資料</button>
+        <button class="btn btn-ghost" id="export-zip-btn" type="button">匯出 ZIP 備份</button>
       </div>
     </header>
 
     <main class="admin-main">
       <div class="admin-notice" id="admin-notice">
-        <strong>Firebase 雲端儲存：</strong>按「儲存到雲端」後，所有開啟模擬器的使用者都會讀取同一份設定與圖片。「儲存到瀏覽器」僅供本機預覽或離線備份。
+        <strong>Firebase 雲端儲存：</strong>所有資料僅儲存在雲端。編輯後請按「儲存到雲端」，模擬器才會同步更新。
       </div>
 
       <section class="admin-section">
         <div class="admin-section-header">
-          <h2>底板（Background）</h2>
-          <button class="btn btn-ghost" id="add-bg-btn" type="button">+ 新增底板</button>
+          <h2>背景（Background）</h2>
+          <button class="btn btn-ghost" id="add-bg-btn" type="button">+ 新增背景</button>
         </div>
         <div class="admin-grid" id="bg-list"></div>
       </section>
@@ -72,7 +70,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="js/firebase-config.js"></script>
   <script src="js/firebase-store.js"></script>
-  <script src="js/store.js"></script>
   <script src="js/admin.js"></script>
 </body>
 </html>

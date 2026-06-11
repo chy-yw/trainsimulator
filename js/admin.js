@@ -3,6 +3,7 @@
 
   let config = { backgrounds: [], items: [] };
   let previewUrls = new Map();
+  let pendingImageBlobs = new Map();
   let pendingUpload = null;
   let useFirebase = false;
 
@@ -81,43 +82,33 @@
     });
   }
 
-  async function loadBaseConfig() {
-    try {
-      const res = await fetch("config.json");
-      if (res.ok) return res.json();
-    } catch {
-      /* ignore */
-    }
-    return { backgrounds: [], items: [] };
-  }
-
   async function loadConfig() {
-    if (firebaseReady()) {
-      try {
-        const cloud = await TrainModelFirebase.getConfig();
-        if (cloud?.backgrounds?.length || cloud?.items?.length) {
-          config = cloud;
-          await refreshPreviewUrls();
-          return;
-        }
-      } catch {
-        /* fall through */
-      }
+    if (!firebaseReady()) {
+      config = { backgrounds: [], items: [] };
+      return;
     }
 
-    const local = await TrainModelStore.getConfig();
-    if (local?.backgrounds?.length || local?.items?.length) {
-      config = local;
-    } else {
-      config = await loadBaseConfig();
+    try {
+      const cloud = await TrainModelFirebase.getConfig();
+      if (cloud?.backgrounds?.length || cloud?.items?.length) {
+        config = cloud;
+        normalizeConfigEntries(config);
+        pendingImageBlobs.clear();
+        await refreshPreviewUrls();
+        return;
+      }
+    } catch {
+      /* fall through */
     }
-    normalizeConfigEntries(config);
-    await refreshPreviewUrls();
+
+    config = { backgrounds: [], items: [] };
+    toast("無法載入雲端資料", true);
   }
 
   async function resolveImageBlob(path) {
-    const localBlob = await TrainModelStore.getImageBlob(path);
-    if (localBlob) return localBlob;
+    if (pendingImageBlobs.has(path)) {
+      return pendingImageBlobs.get(path);
+    }
 
     try {
       const res = await fetch(previewSrc(path));
@@ -139,20 +130,9 @@
       cloudUrls.forEach((url, path) => previewUrls.set(path, url));
     }
 
-    const localUrls = await TrainModelStore.loadImageUrlsForConfig(config);
-    localUrls.forEach((url, path) => {
-      if (!previewUrls.has(path)) previewUrls.set(path, url);
+    pendingImageBlobs.forEach((blob, path) => {
+      previewUrls.set(path, URL.createObjectURL(blob));
     });
-
-    const all = [...config.backgrounds, ...config.items];
-    for (const entry of all) {
-      if (previewUrls.has(entry.file)) continue;
-      try {
-        previewUrls.set(entry.file, new URL(entry.file, document.baseURI).href);
-      } catch {
-        /* ignore */
-      }
-    }
   }
 
   function previewSrc(file) {
@@ -247,7 +227,7 @@
         if (!confirm(`確定刪除「${entry.name}」？`)) return;
         const idx = listRef.findIndex((e) => e.id === id);
         if (idx >= 0) listRef.splice(idx, 1);
-        await TrainModelStore.deleteImage(entry.file).catch(() => {});
+        pendingImageBlobs.delete(entry.file);
         if (firebaseReady() && TrainModelFirebase.getCurrentUser()) {
           await TrainModelFirebase.deleteImage(entry.file).catch(() => {});
         }
@@ -284,10 +264,8 @@
     const path = `${folder}/${filename}`;
     const oldPath = entry.file;
 
-    await TrainModelStore.saveImage(path, file);
-    if (oldPath !== path) {
-      await TrainModelStore.deleteImage(oldPath).catch(() => {});
-    }
+    pendingImageBlobs.delete(oldPath);
+    pendingImageBlobs.set(path, file);
     entry.file = path;
 
     if (firebaseReady() && TrainModelFirebase.getCurrentUser()) {
@@ -295,20 +273,17 @@
         await TrainModelFirebase.uploadImage(path, file);
         if (oldPath !== path) {
           await TrainModelFirebase.deleteImage(oldPath).catch(() => {});
+          pendingImageBlobs.delete(path);
         }
       } catch (err) {
-        toast(`本機已更新，雲端上傳失敗：${err.message}`, true);
+        toast(`圖片已選取，雲端上傳失敗：${err.message}`, true);
       }
     }
 
     pendingUpload = null;
     await refreshPreviewUrls();
     renderAll();
-    toast(
-      firebaseReady() && TrainModelFirebase.getCurrentUser()
-        ? "圖片已更新（請按儲存到雲端同步設定）"
-        : "圖片已更新（請按儲存到雲端或瀏覽器）"
-    );
+    toast("圖片已更新（請按儲存到雲端同步設定）");
   }
 
   function addEntry(type) {
@@ -318,18 +293,13 @@
     const folder = isBg ? "background" : "items";
     list.push({
       id,
-      name: isBg ? `新底板 ${list.length + 1}` : `新組件 ${list.length + 1}`,
+      name: isBg ? `新背景 ${list.length + 1}` : `新組件 ${list.length + 1}`,
       file: `${folder}/${id}-placeholder.jpg`,
       width: isBg ? 3200 : 500,
       height: isBg ? 2400 : 500,
       userCanEditDims: true,
     });
     renderAll();
-  }
-
-  async function saveLocal() {
-    await TrainModelStore.saveConfig(config);
-    toast("已儲存到瀏覽器（僅本機可見）");
   }
 
   async function saveCloud() {
@@ -348,7 +318,7 @@
     try {
       normalizeConfigEntries(config);
       await TrainModelFirebase.publishConfig(config, resolveImageBlob);
-      await TrainModelStore.saveConfig(config);
+      pendingImageBlobs.clear();
       await refreshPreviewUrls();
       toast("已儲存到雲端，所有使用者將看到更新");
     } catch (err) {
@@ -397,16 +367,18 @@
     }
 
     config = imported;
+    normalizeConfigEntries(config);
+    pendingImageBlobs.clear();
+
     const imageFiles = Object.keys(zip.files).filter(
       (name) => !zip.files[name].dir && name !== "config.json"
     );
 
     for (const path of imageFiles) {
       const blob = await zip.file(path).async("blob");
-      await TrainModelStore.saveImage(path, blob);
+      pendingImageBlobs.set(path, blob);
     }
 
-    await TrainModelStore.saveConfig(config);
     await refreshPreviewUrls();
     renderAll();
     toast("匯入成功（請按儲存到雲端發布）");
@@ -421,32 +393,11 @@
     URL.revokeObjectURL(url);
   }
 
-  async function resetLocal() {
-    if (!confirm("清除本機管理資料？不會刪除 Firebase 雲端資料。")) return;
-    await TrainModelStore.clearAll();
-    config = await loadBaseConfig();
-    if (firebaseReady()) {
-      try {
-        const cloud = await TrainModelFirebase.getConfig();
-        if (cloud?.backgrounds?.length || cloud?.items?.length) {
-          config = cloud;
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    await refreshPreviewUrls();
-    renderAll();
-    toast("本機資料已清除");
-  }
-
   function bindEvents() {
     $("#add-bg-btn").addEventListener("click", () => addEntry("background"));
     $("#add-item-btn").addEventListener("click", () => addEntry("item"));
     $("#save-cloud-btn").addEventListener("click", () => saveCloud());
-    $("#save-local-btn").addEventListener("click", () => saveLocal());
     $("#export-zip-btn").addEventListener("click", () => exportZip());
-    $("#reset-local-btn").addEventListener("click", () => resetLocal());
 
     $("#upload-image-input").addEventListener("change", (e) => {
       const file = e.target.files?.[0];
