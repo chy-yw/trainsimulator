@@ -155,11 +155,38 @@
     const ready = await init();
     if (!ready) return null;
 
+    const ref = storageRef(path);
+
     try {
-      return await storageRef(path).getBlob();
+      if (typeof ref.getBlob === "function") {
+        return await ref.getBlob();
+      }
+      if (typeof ref.getBytes === "function") {
+        const bytes = await ref.getBytes();
+        const type = guessImageMime(path);
+        return new Blob([bytes], { type });
+      }
+    } catch (err) {
+      console.warn("Firebase direct blob download failed:", path, err);
+    }
+
+    try {
+      const url = await getImageUrl(path);
+      if (!url) return null;
+      const res = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (!res.ok) return null;
+      return await res.blob();
     } catch {
       return null;
     }
+  }
+
+  function guessImageMime(path) {
+    const ext = String(path).split(".").pop()?.toLowerCase();
+    if (ext === "png") return "image/png";
+    if (ext === "webp") return "image/webp";
+    if (ext === "gif") return "image/gif";
+    return "image/jpeg";
   }
 
   async function getImageUrl(path) {

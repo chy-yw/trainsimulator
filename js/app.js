@@ -446,6 +446,10 @@
   }
 
   async function loadImageFromBlob(blob) {
+    if (typeof createImageBitmap === "function") {
+      return createImageBitmap(blob);
+    }
+
     const url = URL.createObjectURL(blob);
     try {
       return await new Promise((resolve, reject) => {
@@ -459,11 +463,27 @@
     }
   }
 
+  function exportImageApiUrl(filePath, src) {
+    if (src) {
+      return `/api/image?url=${encodeURIComponent(src)}`;
+    }
+    return `/api/image?path=${encodeURIComponent(filePath)}`;
+  }
+
   async function loadExportImage(filePath, src) {
     const cacheKey = filePath || src;
     if (exportImageCache.has(cacheKey)) return exportImageCache.get(cacheKey);
 
     const promise = (async () => {
+      if (filePath || src) {
+        try {
+          const proxyRes = await fetch(exportImageApiUrl(filePath, src));
+          if (proxyRes.ok) return loadImageFromBlob(await proxyRes.blob());
+        } catch (err) {
+          console.warn("Export proxy load failed:", filePath || src, err);
+        }
+      }
+
       if (filePath && window.TrainModelFirebase?.isConfigured()) {
         try {
           const blob = await TrainModelFirebase.getImageBlob(filePath);
@@ -473,11 +493,13 @@
         }
       }
 
-      try {
-        const res = await fetch(src, { mode: "cors", credentials: "omit" });
-        if (res.ok) return loadImageFromBlob(await res.blob());
-      } catch {
-        /* fall through */
+      if (src) {
+        try {
+          const res = await fetch(src, { mode: "cors", credentials: "omit" });
+          if (res.ok) return loadImageFromBlob(await res.blob());
+        } catch {
+          /* fall through */
+        }
       }
 
       throw new Error(`Unable to load export image: ${filePath || src}`);
