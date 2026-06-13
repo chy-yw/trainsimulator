@@ -424,6 +424,125 @@
     });
   }
 
+  function positionDistance(ax, ay, bx, by) {
+    return Math.hypot(ax - bx, ay - by);
+  }
+
+  function getAdjacentCandidates(w, h, excludePlacedId, preferX, preferY) {
+    const candidates = [];
+    const seen = new Set();
+
+    const add = (x, y) => {
+      const key = `${Math.round(x)}:${Math.round(y)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      candidates.push({ x, y });
+    };
+
+    for (const placed of placedItems) {
+      if (placed.instanceId === excludePlacedId) continue;
+      const other = getPlacedDims(placed);
+      const ox = placed.x;
+      const oy = placed.y;
+      const ow = other.width;
+      const oh = other.height;
+
+      add(ox + ow, oy);
+      add(ox + ow, oy + oh - h);
+      add(ox + ow, oy + (oh - h) / 2);
+      add(ox - w, oy);
+      add(ox - w, oy + oh - h);
+      add(ox - w, oy + (oh - h) / 2);
+      add(ox, oy + oh);
+      add(ox + ow - w, oy + oh);
+      add(ox + (ow - w) / 2, oy + oh);
+      add(ox, oy - h);
+      add(ox + ow - w, oy - h);
+      add(ox + (ow - w) / 2, oy - h);
+    }
+
+    candidates.sort(
+      (a, b) =>
+        positionDistance(a.x, a.y, preferX, preferY) -
+        positionDistance(b.x, b.y, preferX, preferY)
+    );
+
+    return candidates;
+  }
+
+  function resolvePlacementPosition(x, y, itemDef, excludePlacedId = null, rotation = 0) {
+    const pos = clampPosition(x, y, itemDef, rotation);
+    const exact = canPlaceAt(pos.x, pos.y, itemDef, excludePlacedId, rotation);
+    if (exact.ok) return { ok: true, x: pos.x, y: pos.y };
+
+    if (!overlapsAnyPlaced(pos.x, pos.y, itemDef, excludePlacedId, rotation)) {
+      return exact;
+    }
+
+    const { width: w, height: h } = getItemDims(itemDef, rotation);
+    const candidates = getAdjacentCandidates(w, h, excludePlacedId, x, y);
+
+    for (const candidate of candidates) {
+      const clamped = clampPosition(candidate.x, candidate.y, itemDef, rotation);
+      const check = canPlaceAt(clamped.x, clamped.y, itemDef, excludePlacedId, rotation);
+      if (check.ok) {
+        return { ok: true, x: clamped.x, y: clamped.y, adjacent: true };
+      }
+    }
+
+    return { ok: false, reason: "附近沒有可用的相鄰位置" };
+  }
+
+  function canPlaceOrResolve(x, y, itemDef, excludePlacedId = null, rotation = 0) {
+    return resolvePlacementPosition(x, y, itemDef, excludePlacedId, rotation).ok;
+  }
+
+  function applyPlacedMove(instanceId, x, y, options = {}) {
+    const placed = placedItems.find((p) => p.instanceId === instanceId);
+    if (!placed) return false;
+
+    const itemDef = getItemDef(placed.itemId);
+    const dims = getPlacedDims(placed);
+    const snapped = snapToGrid(x, y, dims.width, dims.height);
+    const result = resolvePlacementPosition(
+      snapped.x,
+      snapped.y,
+      itemDef,
+      instanceId,
+      placed.rotation
+    );
+
+    if (!result.ok) {
+      if (!options.silent) showToast(result.reason, true);
+      return false;
+    }
+
+    placed.x = result.x;
+    placed.y = result.y;
+    renderPlacedItems();
+    updateStatus();
+    return true;
+  }
+
+  function moveSelectedItemByKey(key) {
+    if (!selectedPlacedId) return false;
+
+    const placed = placedItems.find((p) => p.instanceId === selectedPlacedId);
+    if (!placed) return false;
+
+    const dims = getPlacedDims(placed);
+    const step = getGridCell();
+    let nx = placed.x;
+    let ny = placed.y;
+
+    if (key === "ArrowLeft") nx -= step;
+    if (key === "ArrowRight") nx += step;
+    if (key === "ArrowUp") ny -= step;
+    if (key === "ArrowDown") ny += step;
+
+    return applyPlacedMove(selectedPlacedId, nx, ny);
+  }
+
   function canPlaceAt(x, y, itemDef, excludePlacedId = null, rotation = 0) {
     const bg = getCurrentBg();
     const { width: w, height: h } = getItemDims(itemDef, rotation);
@@ -482,14 +601,16 @@
     );
     pos = snapToGrid(pos.x, pos.y, dims.width, dims.height);
 
-    let check = canPlaceAt(pos.x, pos.y, itemDef, null, rot);
-    if (!check.ok) {
+    let resolved = resolvePlacementPosition(pos.x, pos.y, itemDef, null, rot);
+    if (!resolved.ok) {
       const slot = findNextGridSlot(itemDef, null, rot);
       if (!slot) {
-        showToast(check.reason, true);
+        showToast(resolved.reason || "無法放置組件", true);
         return false;
       }
       pos = slot;
+    } else {
+      pos = { x: resolved.x, y: resolved.y };
     }
 
     placedItems.push({
@@ -685,24 +806,26 @@
     if (dragState.type === "palette") {
       const itemDef = getItemDef(dragState.itemId);
       const dims = getItemDims(itemDef, dragState.rotation);
-      check = canPlaceAt(
+      check = canPlaceOrResolve(
         modelX - dims.width / 2,
         modelY - dims.height / 2,
         itemDef,
         null,
         dragState.rotation
       );
+      check = check ? { ok: true } : { ok: false };
     } else if (dragState.type === "placed") {
       const placed = placedItems.find((p) => p.instanceId === dragState.instanceId);
       const itemDef = getItemDef(placed.itemId);
       const dims = getPlacedDims(placed);
-      check = canPlaceAt(
+      const ok = canPlaceOrResolve(
         modelX - dims.width / 2,
         modelY - dims.height / 2,
         itemDef,
         dragState.instanceId,
         placed.rotation
       );
+      check = ok ? { ok: true } : { ok: false };
     }
 
     board.classList.add("drag-over");
@@ -739,15 +862,9 @@
         placed.rotation
       );
       pos = snapToGrid(pos.x, pos.y, dims.width, dims.height);
-      const check = canPlaceAt(pos.x, pos.y, itemDef, dragState.instanceId, placed.rotation);
-      if (!check.ok) {
-        showToast(check.reason, true);
+      if (!applyPlacedMove(dragState.instanceId, pos.x, pos.y)) {
         return;
       }
-      placed.x = pos.x;
-      placed.y = pos.y;
-      renderPlacedItems();
-      updateStatus();
     }
 
     dragState = null;
@@ -1119,8 +1236,8 @@
         itemDef,
         pointerDrag.rotation
       );
-      const check = canPlaceAt(centered.x, centered.y, itemDef, null, pointerDrag.rotation);
-      board.classList.toggle("drag-invalid", !check.ok);
+      const check = canPlaceOrResolve(centered.x, centered.y, itemDef, null, pointerDrag.rotation);
+      board.classList.toggle("drag-invalid", !check);
     } else if (pointerDrag.type === "placed") {
       const placed = placedItems.find((p) => p.instanceId === pointerDrag.instanceId);
       if (!placed) return;
@@ -1137,14 +1254,14 @@
       pointerDrag.moved = true;
       updatePlacedElement(placed);
 
-      const check = canPlaceAt(
+      const check = canPlaceOrResolve(
         clamped.x,
         clamped.y,
         itemDef,
         pointerDrag.instanceId,
         placed.rotation
       );
-      board.classList.toggle("drag-invalid", !check.ok);
+      board.classList.toggle("drag-invalid", !check);
     }
   }
 
@@ -1160,22 +1277,12 @@
     } else if (pointerDrag.type === "placed") {
       const placed = placedItems.find((p) => p.instanceId === pointerDrag.instanceId);
       if (placed) {
-        const itemDef = getItemDef(placed.itemId);
         const dims = getPlacedDims(placed);
         const snapped = snapToGrid(placed.x, placed.y, dims.width, dims.height);
-        placed.x = snapped.x;
-        placed.y = snapped.y;
-        const check = canPlaceAt(
-          placed.x,
-          placed.y,
-          itemDef,
-          pointerDrag.instanceId,
-          placed.rotation
-        );
-        if (!check.ok) {
+        if (!applyPlacedMove(pointerDrag.instanceId, snapped.x, snapped.y, { silent: true })) {
           placed.x = pointerDrag.startX;
           placed.y = pointerDrag.startY;
-          showToast(check.reason, true);
+          showToast("附近沒有可用的相鄰位置", true);
         }
         const el = board.querySelector(`[data-instance-id="${pointerDrag.instanceId}"]`);
         if (el) {
@@ -1255,6 +1362,18 @@
 
       if (e.key === "Delete" && selectedPlacedId) {
         removePlaced(selectedPlacedId);
+        return;
+      }
+
+      if (
+        selectedPlacedId &&
+        (e.key === "ArrowUp" ||
+          e.key === "ArrowDown" ||
+          e.key === "ArrowLeft" ||
+          e.key === "ArrowRight")
+      ) {
+        e.preventDefault();
+        moveSelectedItemByKey(e.key);
         return;
       }
 
