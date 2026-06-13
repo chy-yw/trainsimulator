@@ -708,6 +708,17 @@
     dragState = null;
   }
 
+  function getItemUiScale(displayW, displayH) {
+    const base = Math.min(displayW, displayH);
+    return Math.max(7, Math.min(28, base * 0.13));
+  }
+
+  function applyItemUiScale(el, displayW, displayH) {
+    const labelSize = getItemUiScale(displayW, displayH);
+    el.style.setProperty("--label-size", `${labelSize}px`);
+    el.style.setProperty("--control-size", `${Math.max(18, Math.min(34, labelSize * 1.75))}px`);
+  }
+
   function buildPlacedItemMarkup(placed, itemDef) {
     const rot = normalizeRotation(placed.rotation);
     const eff = getItemDims(itemDef, rot);
@@ -743,6 +754,7 @@
       el.style.top = `${modelToDisplay(placed.y)}px`;
       el.style.width = `${modelToDisplay(eff.width)}px`;
       el.style.height = `${modelToDisplay(eff.height)}px`;
+      applyItemUiScale(el, modelToDisplay(eff.width), modelToDisplay(eff.height));
 
       el.innerHTML = buildPlacedItemMarkup(placed, itemDef);
 
