@@ -32,6 +32,7 @@
 html,
 body {
   height: 100%;
+  min-height: 100dvh;
   font-family: "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
   background:
     radial-gradient(ellipse at 15% 0%, var(--accent-glow) 0%, transparent 52%),
@@ -46,6 +47,7 @@ body {
   grid-template-columns: 300px 1fr 280px;
   grid-template-rows: auto 1fr;
   height: 100vh;
+  height: 100dvh;
   gap: 0;
 }
 
@@ -318,17 +320,32 @@ header p {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 16px;
   background:
     radial-gradient(ellipse at 50% 0%, var(--accent-glow) 0%, transparent 58%),
     radial-gradient(ellipse at 50% 100%, var(--warm-glow) 0%, transparent 50%),
     var(--bg);
   overflow: auto;
   position: relative;
+  min-width: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scene {
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.board-wrapper {
+  max-width: 100%;
 }
 
 .board {
   position: relative;
+  max-width: 100%;
   background: #111;
   border-radius: 4px;
   box-shadow:
@@ -650,12 +667,24 @@ header p {
   color: var(--text-muted);
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
   .app {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr auto;
+    grid-template-rows: auto auto minmax(55dvh, 1fr) auto;
     height: auto;
     min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .panel-left,
@@ -665,6 +694,29 @@ header p {
   }
 
   .viewport {
-    min-height: 50vh;
+    min-height: 55dvh;
+    padding: 12px;
+  }
+
+  .board-label {
+    padding: 0 8px;
+  }
+}
+
+@media (max-width: 768px) {
+  header h1 {
+    font-size: 1rem;
+  }
+
+  header p {
+    display: none;
+  }
+
+  .viewport {
+    min-height: 50dvh;
+  }
+
+  .palette-section {
+    max-height: 38dvh;
   }
 }

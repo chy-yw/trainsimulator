@@ -55,6 +55,7 @@
     buildPalette();
     bindEvents();
     bindPointerDrag();
+    bindBoardResize();
   }
 
   function showLoadError() {
@@ -245,17 +246,35 @@
     $("#board-label").textContent = `${bg.name} — ${bg.width} × ${bg.height} mm`;
   }
 
+  function syncScaleFromBoard() {
+    const bg = getCurrentBg();
+    if (!bg || !board) return;
+    const w = board.getBoundingClientRect().width;
+    if (w > 0) scale = w / bg.width;
+  }
+
   function resizeBoard() {
     const bg = getCurrentBg();
-    if (!bg) return;
+    const viewport = $(".viewport");
+    if (!bg || !viewport) return;
 
-    const maxW = Math.min(window.innerWidth - 640, 900);
-    scale = maxW / bg.width;
-    const displayW = bg.width * scale;
-    const displayH = bg.height * scale;
+    const padX = 32;
+    const padY = 40;
+    const availW = Math.max(280, viewport.clientWidth - padX);
+    const availH = Math.max(220, viewport.clientHeight - padY);
+    const aspect = bg.width / bg.height;
+
+    let displayW = availW;
+    let displayH = displayW / aspect;
+
+    if (displayH > availH) {
+      displayH = availH;
+      displayW = displayH * aspect;
+    }
 
     board.style.width = `${displayW}px`;
     board.style.height = `${displayH}px`;
+    syncScaleFromBoard();
     updateBoardGridVisual();
   }
 
@@ -1021,6 +1040,7 @@
   }
 
   function getBoardCoords(clientX, clientY) {
+    syncScaleFromBoard();
     const rect = board.getBoundingClientRect();
     return {
       x: displayToModel(clientX - rect.left),
@@ -1134,6 +1154,24 @@
     document.addEventListener("pointercancel", onPointerUp);
   }
 
+  function bindBoardResize() {
+    const viewport = $(".viewport");
+    if (!viewport) return;
+
+    const onLayoutChange = () => {
+      resizeBoard();
+      renderPlacedItems();
+    };
+
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(onLayoutChange).observe(viewport);
+    }
+
+    window.addEventListener("orientationchange", () => {
+      setTimeout(onLayoutChange, 150);
+    });
+  }
+
   function bindEvents() {
     bgSelect.addEventListener("change", (e) => selectBackground(e.target.value));
 
@@ -1158,11 +1196,6 @@
     board.addEventListener("dragover", onBoardDragOver);
     board.addEventListener("dragleave", onBoardDragLeave);
     board.addEventListener("drop", onBoardDrop);
-
-    window.addEventListener("resize", () => {
-      resizeBoard();
-      renderPlacedItems();
-    });
 
     document.addEventListener("keydown", (e) => {
       if (e.target.matches("input, textarea, select")) return;
